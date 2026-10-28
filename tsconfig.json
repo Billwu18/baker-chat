@@ -1,0 +1,41 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+
+    // 曾经需要它是因为前端直接 import 了服务端的两个零依赖 ESM
+    // （server/qr.mjs 画二维码、server/share-link.mjs 拼连接串），共用一份
+    // 实现免得两边分家。P2P 转向把 server/ 整个归档之后就没有跨目录的 .js
+    // 引用了 —— 留成 false 是**默认值**，同时把 `server/` 那几个已经不存在的
+    // 路径从注释里删掉，免得下一个人照着去找。
+    "allowJs": false,
+
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": false,
+
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    },
+
+    "types": ["vite/client"]
+  },
+  // 只有 `src`。探针（`tools/*.ts`）在 `tsconfig.tools.json` 里单独检查 ——
+  // 它们跑在 Node 里，需要的全局对象（`process` / `Buffer`）不该对浏览器
+  // 代码可见。两份都跑才算数，`npm run typecheck` 就是这么做的。
+  "include": ["src", "src/vite-env.d.ts"]
+}

@@ -1,0 +1,23 @@
+{
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "BAKER",
+        "width": 1600,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 576,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true,
+        "theme": "Dark",
+        "backgroundColor": "#2c2c2c",
+        "additionalBrowserArgs": "--remote-debugging-port=9333 --remote-allow-origins=* --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  // 探针（`tools/*.ts`）跑在 Node 里，而 `src/` 跑在浏览器里 —— 两边能用的
+  // 全局对象不一样。所以单独一份配置，而不是把 `tools` 塞进主 tsconfig：
+  // 塞进去的话 `process` / `Buffer` 会对**整个 src 可见**，于是一个
+  // 浏览器代码里误用 `process.env` 的改动会在本地一路绿到打包才炸。
+  //
+  // 两份都跑：`src` 在不认识 Node 的世界里检查一遍（主配置），
+  // `tools` 在认识 Node 的世界里检查一遍（这份）。
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "vite/client"]
+  },
+  "include": ["tools"]
+}

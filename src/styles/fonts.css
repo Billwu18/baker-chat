@@ -1,0 +1,47 @@
+/**
+ * HarmonyOS Sans SC —— 华为官方全字族（含完整简体中文字形）。
+ *
+ * 为什么不用 baker-dx 里那六个 142KB 的 TTF：那些是纯拉丁子集，中文会掉回系统字体，
+ * 跟游戏里的观感完全对不上。这里的六个字重每个约 8MB，是同一字族的完整版。
+ *
+ * 权重沿用华为的约定，跟游戏 main.css 的使用方式一致：
+ *   100 Thin / 300 Light / 400 Regular / 500 Medium / 700 Bold / 900 Black
+ * 游戏把消息区设成 font-weight: 500，所以正文实际落到 Medium 这一档。
+ *
+ * 只注册界面真正用到的 400 / 500 / 700 三档 —— 六个字重全打进产物是 49MB，
+ * 只留三档是 24MB，而 Thin/Light/Black 在 Baker 界面里一个都用不到。
+ * 要把剩下三档加回来，照下面的写法补 @font-face 就行（文件都在 assets/fonts 下）。
+ */
+
+@font-face {
+  font-family: 'HarmonyOS Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../assets/fonts/HarmonyOS_Sans_SC_Regular.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'HarmonyOS Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('../assets/fonts/HarmonyOS_Sans_SC_Medium.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'HarmonyOS Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../assets/fonts/HarmonyOS_Sans_SC_Bold.ttf') format('truetype');
+}
+
+/** Bender —— 游戏里数字/编号用的窄体字。 */
+@font-face {
+  font-family: 'Bender';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../assets/fonts/bender.otf') format('opentype');
+}

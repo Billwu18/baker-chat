@@ -1,0 +1,436 @@
+/* --------------------------------------------------------------------------
+   补遗样式：对着游戏内真实截图（2559×1541）逐项量出来、上一版缺掉的部分。
+
+   单位仍然是「1 设计 px = 1/1080 视口高」（见 baker.css 里 html 的 font-size）。
+   下面注释里的「源 px」都是在那张 2559×1541 截图上量的，
+   除以 1.4269 换算到 1920×1080 的设计值。
+   -------------------------------------------------------------------------- */
+
+/* ==========================================================================
+   顶部标签栏（#baker-tabbar）
+
+   游戏里 Baker 是一个「应用」，屏幕顶部有一条居中的 HUD 标签栏：
+   搜索 / Baker（当前页，高亮成 Baker 黄）/ 公告 / 好友，最右边一个快捷键提示。
+   上一版完全没做这一条，所以看上去像网页而不像游戏里的 SNS 界面。
+
+   最右那一格原版是「快捷键 E」的小方块，这里换成了真正的齿轮按钮（设置）——
+   桌面壳里没有 E 这个键，留着一个提示不存在按键的方框只是装饰。
+
+   源 px：整条 x 490..2070（宽 1580 ≈ 69rem）、高 92（≈4rem），
+   底纹是 45° 斜线，两端渐隐。
+   ========================================================================== */
+
+#baker-tabbar {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 1.4rem;
+  height: 4rem;
+  padding: 0 2.5rem;
+}
+
+/* 斜纹底板单独放一层，这样渐隐遮罩不会把图标一起吃掉 */
+#baker-tabbar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: repeating-linear-gradient(
+    45deg,
+    rgb(255 255 255 / 0.05) 0 0.0625rem,
+    transparent 0.0625rem 0.4rem
+  );
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 7%, #000 93%, transparent);
+  mask-image: linear-gradient(to right, transparent, #000 7%, #000 93%, transparent);
+  pointer-events: none;
+}
+
+.tabbar-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  opacity: 0.9;
+}
+
+.tabbar-btn:hover {
+  opacity: 1;
+}
+
+.tabbar-btn img {
+  width: 1.5rem;
+  height: 1.5rem;
+  object-fit: contain;
+}
+
+/*
+ * 搜索：圆角方框描边 + 里面的放大镜。
+ *
+ * 放大镜改成**内联 SVG**（原来是 ::before 画圆 + ::after 画一根 45° 小方块当把手）。
+ * 拼出来的把手是单独一个绝对定位的元素，圆多大、边框多粗、浏览器怎么取整，都会让它
+ * 和镜筒之间空一条缝或者叠出一个尖角；换缩放就更明显。SVG 是一条连续的描边，
+ * 缩放、细描边、圆头端点都是确定的。
+ */
+.tabbar-search {
+  width: 2rem;
+  height: 2rem;
+  border: 0.0625rem solid rgb(255 255 255 / 0.45);
+  border-radius: 0.35rem;
+  color: rgb(255 255 255 / 0.78);
+  transition:
+    border-color 0.12s linear,
+    color 0.12s linear;
+}
+
+.tabbar-search:hover {
+  border-color: rgb(255 255 255 / 0.72);
+  color: #fff;
+}
+
+.tabbar-search svg {
+  width: 1.3rem;
+  height: 1.3rem;
+  fill: none;
+  stroke: currentColor;
+  /* 非等比缩放时描边不被拉粗拉细 */
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+/* 当前所在的 Baker 页：一整块 Baker 黄，图标反相成黑色。
+   源 px 134×92 ≈ 5.875rem × 4rem。 */
+.tabbar-tab {
+  width: 5.875rem;
+  height: 4rem;
+  background: #ffef00;
+  border-radius: 0.35rem 0.35rem 0 0;
+}
+
+.tabbar-tab img {
+  width: 2.6rem;
+  height: 2.6rem;
+  /* 原版是深色字形，素材本身是白色图标，反相即可 */
+  filter: brightness(0);
+}
+
+.tabbar-tab::after {
+  /* 黄块里那层很淡的等高线纹理 */
+  content: '';
+  position: absolute;
+  inset: 0.2rem;
+  border-radius: 0.25rem;
+  background: repeating-linear-gradient(
+    -20deg,
+    rgb(0 0 0 / 0.06) 0 0.0625rem,
+    transparent 0.0625rem 0.7rem
+  );
+  pointer-events: none;
+}
+
+.tabbar-divider {
+  width: 0.0625rem;
+  height: 1.5rem;
+  background: rgb(255 255 255 / 0.28);
+}
+
+/*
+ * 设置：齿轮。
+ *
+ * 这一格原来照抄原版那个「快捷键 E」的描边小方块（一个框里写字母 E），
+ * 但桌面壳里**根本没有 E 这个快捷键** —— 提示一个不存在的键，纯装饰。
+ * 改成真按钮，而且正好补上一个缺口：在此之前，打开设置的**唯一**入口是顶栏那行标题，
+ * 又隐蔽又容易误触。现在它和搜索一样是第一眼就看得见的东西。
+ *
+ * 外框和搜索**逐项对齐**（2rem 见方 / 1px 描边 45% 白 / 0.35rem 圆角 / svg 1.3rem），
+ * 因为这两个是并排的同类按钮 —— 之前齿轮只有 1.6rem 且没有框，看过去像漏画了一笔。
+ */
+.tabbar-settings {
+  width: 2rem;
+  height: 2rem;
+  border: 0.0625rem solid rgb(255 255 255 / 0.45);
+  border-radius: 0.35rem;
+  color: rgb(255 255 255 / 0.78);
+  transition:
+    border-color 0.12s linear,
+    color 0.12s linear;
+}
+
+.tabbar-settings:hover {
+  border-color: rgb(255 255 255 / 0.72);
+  color: #ffef00;
+}
+
+.tabbar-settings svg {
+  width: 1.3rem;
+  height: 1.3rem;
+  fill: currentColor;
+}
+
+/* 右上角的关闭按钮：细描边圆 + 叉 */
+#baker-close {
+  position: fixed;
+  top: 0.9rem;
+  right: 1.6rem;
+  z-index: 6;
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 50%;
+  border: 0.09375rem solid rgb(255 255 255 / 0.7);
+  background: rgb(0 0 0 / 0.25);
+  color: #fff;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+#baker-close:hover {
+  background: rgb(255 255 255 / 0.16);
+}
+
+/* ==========================================================================
+   空状态（未选中会话时）
+
+   原版不是一个孤零零的「请选择会话」，而是：点阵网格 + 菱形宝石 + 一条横线，
+   中间压一块深色标签写「- 请选择会话 -」，下面浅灰写 EMPTY。
+   ========================================================================== */
+
+.not-chosen {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 60%;
+  min-height: 12rem;
+}
+
+.not-chosen-grid {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgb(255 255 255 / 0.09) 0.0625rem, transparent 0.0625rem);
+  background-size: 0.85rem 0.85rem;
+  -webkit-mask-image: radial-gradient(closest-side, #000 55%, transparent 100%);
+  mask-image: radial-gradient(closest-side, #000 55%, transparent 100%);
+  pointer-events: none;
+}
+
+.not-chosen-gem {
+  position: absolute;
+  width: 9rem;
+  height: 9rem;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -58%);
+  background: linear-gradient(160deg, rgb(255 255 255 / 0.09), rgb(255 255 255 / 0.02));
+  clip-path: polygon(50% 0%, 100% 42%, 78% 100%, 22% 100%, 0% 42%);
+  pointer-events: none;
+}
+
+.not-chosen-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 0.0625rem;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgb(255 255 255 / 0.22) 12%,
+    rgb(255 255 255 / 0.22) 88%,
+    transparent
+  );
+  pointer-events: none;
+}
+
+.not-chosen-label {
+  position: relative;
+  z-index: 1;
+  padding: 0.5rem 1.4rem;
+  background: rgb(10 10 10 / 0.72);
+  font-size: 1.5em;
+  letter-spacing: 0.05em;
+}
+
+.not-chosen-empty {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 4.2rem);
+  transform: translateX(-50%);
+  color: rgb(255 255 255 / 0.22);
+  font-family: 'Bender', sans-serif;
+  font-size: 1.15em;
+  letter-spacing: 0.22em;
+}
+
+/* ==========================================================================
+   会话列表滚动条
+
+   原版是一条细长的浅色圆头竖条，只在右侧贴着（截图里能看到它一直画到顶）。
+   默认的浏览器滚动条在深色界面上很出戏。
+   ========================================================================== */
+
+#cards-wrapper {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(255 255 255 / 0.75) transparent;
+}
+
+#cards-wrapper::-webkit-scrollbar {
+  width: 0.3rem;
+}
+
+#cards-wrapper::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#cards-wrapper::-webkit-scrollbar-thumb {
+  background: rgb(255 255 255 / 0.75);
+  border-radius: 0.15rem;
+}
+
+/* 消息区滚动条同理，但更含蓄一点 */
+#session-main-content::-webkit-scrollbar {
+  width: 0.3rem;
+}
+
+#session-main-content::-webkit-scrollbar-thumb {
+  background: rgb(255 255 255 / 0.35);
+  border-radius: 0.15rem;
+}
+
+#session-main-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ==========================================================================
+   图片加载失败
+
+   只退成一行占位字。绝不能再顺手调 retry —— 那等于拿自己的身份把别人的图重发一遍。
+   ========================================================================== */
+
+.message-image-broken {
+  display: inline-block;
+  padding: 0.6rem 1rem;
+  border: 0.0625rem dashed rgb(255 255 255 / 0.3);
+  border-radius: 0.3125rem;
+  color: rgb(255 255 255 / 0.55);
+  font-size: 0.95em;
+}
+
+/* ==========================================================================
+   底部「全部显示」按钮（原版是筛选器，不是新建会话）
+
+   原版图标是一个漏斗。素材里没有漏斗，用两条 CSS 边做个 V 形 + 竖杆。
+   ========================================================================== */
+
+.filter-glyph {
+  position: relative;
+  width: 1.1rem;
+  height: 1.1rem;
+  flex: 0 0 auto;
+}
+
+/* 漏斗上半部分：一个上宽下窄的梯形，用 clip-path 剪出来 */
+.filter-glyph::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 55% 0;
+  background: #444;
+  clip-path: polygon(0 0, 100% 0, 62% 100%, 38% 100%);
+}
+
+/* 漏斗的细杆 */
+.filter-glyph::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 45%;
+  width: 0.1875rem;
+  height: 0.55rem;
+  margin-left: -0.09375rem;
+  background: #444;
+}
+
+/* 筛选菜单：借用游戏 menu.css 的 ._menu 外观 */
+.filter-menu {
+  position: absolute;
+  left: 0;
+  bottom: 3.1rem;
+  z-index: 20;
+  min-width: 12rem;
+  padding: 0.25rem;
+  border-radius: 0.5rem;
+  border: 0.0625rem solid rgb(0 0 0 / 0.38);
+  background: rgb(255 255 255 / 0.84);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 0.375rem 1.125rem rgb(0 0 0 / 0.28);
+}
+
+.filter-menu-title {
+  margin: 0.5rem 0 0.125rem 0.5rem;
+  color: #808080;
+  font-size: 0.9rem;
+}
+
+.filter-menu button {
+  display: block;
+  width: 100%;
+  height: 2.25rem;
+  padding: 0 0.625rem;
+  background: transparent;
+  border: 0;
+  border-radius: 0.25rem;
+  color: #000;
+  font-size: 1.05rem;
+  text-align: left;
+}
+
+.filter-menu button:hover {
+  background: rgb(0 0 0 / 0.12);
+}
+
+.filter-menu button.is-selected::after {
+  content: '✓';
+  float: right;
+  color: #444;
+}
+
+/* 底部按钮的定位容器：筛选菜单要相对它弹出来 */
+#cards-filter {
+  position: relative;
+}
+
+.cards-empty {
+  margin: 0;
+  padding: 1rem 0.25rem;
+  color: rgb(255 255 255 / 0.5);
+  font-size: 0.95em;
+}
+
+
+/* ==========================================================================
+   消息行上的发言人名字
+
+   游戏原版的消息行里没有名字（baker-dx 的 MessageRow 结构只有
+   avatar | 气泡堆 | avatar），所以默认不显示；设置里打开才出现。
+   ========================================================================== */
+
+.message-row-name {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  margin-bottom: 0.1rem;
+  color: rgb(255 255 255 / 0.72);
+  font-size: 0.85em;
+}
+
+.message-row-name i {
+  color: rgb(255 255 255 / 0.4);
+  font-style: normal;
+  font-size: 0.9em;
+}
+

@@ -1,0 +1,535 @@
+{
+  "note": [
+    "变异表：每一条都是一处**真会出事**的代码退化，配一个正则应被它打红的自检。",
+    "",
+    "跑法见 tools/mutation-check.ps1。判据是「改坏之后自检必须变红」：",
+    "如果某条变异之后自检**照样全绿**，说明那条不变式根本没人守着 ——",
+    "这才是这个文件存在的意义。它测的不是产品，是测试。",
+    "",
+    "## 挑变异的标准",
+    "",
+    "不是随便改一个字符。每条都对应一句能说出来的话，比如",
+    "「别人签一条 pin 就能改我的好友列表」。挑不出这句话的变异不值得加：",
+    "它红不红都不说明问题。",
+    "",
+    "## 为什么放在 JSON 里",
+    "",
+    "find / replace 是逐字节的源码片段，含反引号、$、单双引号和换行。",
+    "塞进 PowerShell 字面量要跟四种转义规则打架，而这里一眼就是原文。",
+    "顺带避开 `Get-Content` 的 ANSI 陷阱（见 tools/encoding-guard.mjs）。"
+  ],
+  "mutations": [
+    {
+      "id": "identity-too-short",
+      "file": "src/p2p/event.ts",
+      "suite": "p2p-selftest",
+      "what": "author 只取哈希前 5 字节（40 位）—— 回到「能被暴力撞出同一个人」的老问题",
+      "find": "  const bytes = canonicalBytes({ ed: pub.ed, x: pub.x })\n  const digest = await crypto.subtle.digest('SHA-256', bytes)\n  return toB64Url(new Uint8Array(digest))\n}",
+      "replace": "  const bytes = canonicalBytes({ ed: pub.ed, x: pub.x })\n  const digest = await crypto.subtle.digest('SHA-256', bytes)\n  return toB64Url(new Uint8Array(digest).subarray(0, 5))\n}"
+    },
+    {
+      "id": "canonical-undefined-becomes-null",
+      "file": "src/p2p/canonical.ts",
+      "suite": "p2p-selftest",
+      "what": "undefined 静默变成 null —— 「字段写错了」表现成「字段是空的」，而且两种不同输入得到同一串字节",
+      "find": "      fail(path, `${typeof value} 没有确定性 JSON 表示`)",
+      "replace": "      out.push('null')"
+    },
+    {
+      "id": "canonical-keys-unsorted",
+      "file": "src/p2p/canonical.ts",
+      "suite": "p2p-selftest",
+      "what": "对象键不排序 —— 字面量顺序不同就产生两串字节，两边算出的 id 对不上",
+      "find": "  keys.sort(compareCodeUnits)",
+      "replace": "  keys"
+    },
+    {
+      "id": "canonical-symbols-ignored",
+      "file": "src/p2p/canonical.ts",
+      "suite": "p2p-selftest",
+      "what": "Symbol 键不再报错 —— 只有 symbol 键的对象会安静地序列化成 {}",
+      "find": "    fail(path, `有 ${symbols.length} 个 Symbol 键，JSON 表示不了`)",
+      "replace": "    void symbols"
+    },
+    {
+      "id": "hlc-observe-drops-seq",
+      "file": "src/p2p/hlc.ts",
+      "suite": "p2p-selftest",
+      "what": "observe 只推毫秒、把序号归零 —— 「回复」的时间戳会小于被回复的那条",
+      "find": "      this.lastMs = remoteMs\n      this.seq = remoteSeq",
+      "replace": "      this.lastMs = remoteMs\n      this.seq = 0"
+    },
+    {
+      "id": "fold-pin-forged",
+      "file": "src/p2p/fold.ts",
+      "suite": "p2p-selftest",
+      "what": "pin 不再要求作者是自己 —— 别人签一条就能决定我的好友列表里是谁",
+      "find": "  if (event.author === state.self) {",
+      "replace": "  if (true) {"
+    },
+    {
+      "id": "fold-msg-nonmember",
+      "file": "src/p2p/fold.ts",
+      "suite": "p2p-selftest",
+      "what": "不检查发言者是不是会话成员 —— 谁都能往任何会话里插一条消息",
+      "find": "  if (!session.memberIds.includes(event.author)) return // 不是成员，不许发言\n",
+      "replace": ""
+    },
+    {
+      "id": "fold-recall-anyone",
+      "file": "src/p2p/fold.ts",
+      "suite": "p2p-selftest",
+      "what": "谁都能撤回别人的消息",
+      "find": "  if (message.authorId !== event.author) return\n",
+      "replace": ""
+    },
+    {
+      "id": "fold-session-outsider",
+      "file": "src/p2p/fold.ts",
+      "suite": "p2p-selftest",
+      "what": "建会话时不要求作者在成员列表里 —— 可以把不认识的人硬塞进别人的名单",
+      "find": "  if (!members.includes(event.author)) return",
+      "replace": "  if (false) return"
+    },
+    {
+      "id": "fold-order-by-arrival",
+      "file": "src/p2p/fold.ts",
+      "suite": "p2p-selftest",
+      "what": "折叠按到达顺序而不是按依赖分档 —— 同样两条事件换个顺序就得到不同结果",
+      "find": "  for (let phase = 0; phase <= 3; phase += 1) {\n    for (const event of events) {\n      if (phaseOf(event.kind) === phase) foldOnce(state, event)\n    }\n  }",
+      "replace": "  for (const event of events) foldOnce(state, event)"
+    },
+    {
+      "id": "log-sig-not-verified",
+      "file": "src/p2p/log.ts",
+      "suite": "p2p-selftest",
+      "what": "不验签名就收下事件 —— 任何人都能以任何人的名义写日志",
+      "find": "      const ok = await verifyEvent(event, this.lookup)\n      if (!ok) return 'bad-sig'",
+      "replace": "      if (false) return 'bad-sig'"
+    },
+    {
+      "id": "log-flush-not-awaited",
+      "file": "src/p2p/log.ts",
+      "suite": "p2p-selftest",
+      "what": "profile 到了之后不等积压事件放完就返回 —— 调用方看到「消息不见了」",
+      "find": "        await this.flushDeferred(event.author)",
+      "replace": "        void this.flushDeferred(event.author)"
+    },
+    {
+      "id": "wire-always-resend-all",
+      "file": "src/p2p/wire.ts",
+      "suite": "p2p-selftest",
+      "what": "差集退化成「不看你有什么、全发」—— A/B/C 三角里那 11 条永远补不齐的同一类错",
+      "find": "  const known = new Set(theirHave)",
+      "replace": "  const known = new Set<string>()"
+    },
+    {
+      "id": "linked-accepts-self-id",
+      "file": "src/p2p/node.ts",
+      "suite": "p2p-node-selftest",
+      "what": "握手声称对端就是我本人时照样收下 —— 对端 id 是它在 TCP hello 里自己填的，Rust 侧只校验「非空、不超长」，没有任何东西把它和公钥绑起来。而 maySeeBlob() 有一条 `peerId === selfId → true` 的捷径（本机取自己的文件用），于是这条假链路一进 peers 表，**任何** blob 的名单检查都会放行，shareBlob 的推送循环把字节原样推过去。线上只是 base64、不是密文，所以这是数据外泄而不是拒绝服务。功能测试全绿，因为正常链路也确实连得上",
+      "find": "        if (id === this.selfId) return\n        this.peers.set(id, {",
+      "replace": "        void id\n        this.peers.set(id, {"
+    },
+    {
+      "id": "blob-audience-ignored",
+      "file": "src/p2p/node.ts",
+      "suite": "p2p-node-selftest",
+      "what": "文件字节不认名单，谁要都给 —— 局域网上任何一个连上来的进程发一帧 blob-want 就能拖走你私聊里的文件原文（功能测试全绿，因为该收到的人确实收到了）",
+      "find": "    return this.blobAudience.get(id)?.has(peerId) ?? false",
+      "replace": "    return true"
+    },
+    {
+      "id": "blob-no-hash-check",
+      "file": "src/p2p/blob.ts",
+      "suite": "p2p-node-selftest",
+      "what": "收到文件不重算哈希 —— 对端可以用别人的 id 把已存的那份盖掉",
+      "find": "  return (await blobIdOf(bytes)) === id",
+      "replace": "  return true"
+    },
+    {
+      "id": "keys-fingerprint-drops-x",
+      "file": "src/crypto/keys.ts",
+      "suite": "crypto-selftest",
+      "what": "指纹只算 Ed25519 公钥、不算 X25519 —— 换掉加密公钥换不来新指纹",
+      "find": "  const material = concat(fromB64(pub.ed), fromB64(pub.x))",
+      "replace": "  const material = fromB64(pub.ed)"
+    },
+    {
+      "id": "send-drops-cipher",
+      "file": "src/transport/local.ts",
+      "suite": "p2p-transport-selftest",
+      "what": "发消息时不带密文 —— 收件人收到一条没有内容的空消息，而两边都不报错",
+      "find": "        text: input.text,\n        cipher: input.cipher,",
+      "replace": "        text: input.text,\n        cipher: undefined,"
+    },
+    {
+      "id": "keyfetch-takes-highest-version",
+      "file": "src/transport/local.ts",
+      "suite": "p2p-transport-selftest",
+      "what": "取密钥包时不检查发件人是不是会话成员，只挑全日志里版本最高的那一份 —— 局域网里任何一个换过 profile 的陌生人（不必是会话成员）都能往别人的日志里塞一条 keyVersion: 99 的假包：收件人的公钥是公开的，他用自己的私钥 + 对方的公钥就封得出对方打得开的信封；单聊的会话 id 由两个公钥哈希拼出，同样公开可算。真包被它挤掉，而 chatStore 的 acceptKey 随后以「发件人不是建钥人」整条拒收，于是这个人永远拿不到钥匙 —— 而它在没钥匙时照发不误，消息静默降级成明文。功能测试全绿：该收到消息的人确实收到了，只有密文没了",
+      "find": "      if (!known || !known.has(event.author)) continue",
+      "replace": "      void known"
+    },
+    {
+      "id": "keyfetch-drops-no-bundle",
+      "file": "src/transport/local.ts",
+      "suite": "p2p-transport-selftest",
+      "what": "查不到密钥包时不带 `no_bundle` 码 —— 上层把「日志里根本没有钥匙」误判成「有钥匙但打不开」，于是新会话永远不建钥：没有 key 事件，消息静默降级成明文发出去，界面上只挂一条看不懂的报错。功能看上去全对（消息确实发出去了、对方也确实收到了），只有密文没了",
+      "find": "      error.code = 'no_bundle'",
+      "replace": "      error.code = 'missing_key'"
+    },
+    {
+      "id": "forgetseq-resets-sequence",
+      "file": "src/store/cryptoSeq.ts",
+      "suite": "crypto-seq-selftest",
+      "what": "清理会话时让发送序号**倒回去** —— 对端的 seen 表里还记着 (我, 1..N)，倒回去之后我发的每一条都被它当成重放静默丢掉。我这边的气泡一切正常，它那边永远收不到，而界面上没有任何提示。「退出会话」曾经真的会走到这条路",
+      "find": "    data.retired[sessionId] = Math.max(data.retired[sessionId] ?? 0, last)",
+      "replace": "    void last"
+    },
+    {
+      "id": "wire-skips-size-gate",
+      "file": "src/p2p/wire.ts",
+      "suite": "p2p-selftest",
+      "what": "收帧时不先看字节数，直接 JSON.parse —— 解析要为整帧分配一次，48 MB 的输入光解析就是几百毫秒的主线程占用，而这一切发生在任何校验之前。Rust 那层的 64 MB 墙是唯一还站着的东西",
+      "find": "  if (bytes.length > MAX_WIRE_BYTES) return undefined",
+      "replace": "  void MAX_WIRE_BYTES"
+    },
+    {
+      "id": "wire-accepts-unbounded-events",
+      "file": "src/p2p/wire.ts",
+      "suite": "p2p-selftest",
+      "what": "一帧里的事件条数不设上限。字节上限挡不住「很多条很小的事件」：一条 recall 只有一百多字节，48 MB 的帧能装三十万条，而 ingestMany 是逐条 await 的（每条一次 Ed25519 验签）—— 一个连接就能把主线程占满",
+      "find": "      if (record.events.length > EVENTS_PER_FRAME) return undefined",
+      "replace": "      void EVENTS_PER_FRAME"
+    },
+    {
+      "id": "log-skips-event-size-gate",
+      "file": "src/p2p/log.ts",
+      "suite": "p2p-selftest",
+      "what": "收事件时不看体积。signEvent 里那道 128 KB 只管我们自己造的事件；别人送来的这条 JS 对象早就建好了，于是它一路进日志、进折叠，每次重算都要再规范化一遍",
+      "find": "    if (roughEventBytes(raw) > MAX_EVENT_BYTES) return 'malformed'",
+      "replace": "    void roughEventBytes"
+    },
+    {
+      "id": "event-accepts-any-future-ts",
+      "file": "src/p2p/event.ts",
+      "suite": "p2p-selftest",
+      "what": "时间戳不设上界。ts 是 HLC 且排序按 (ts, id) 比大小，于是一条 ts 接近 Number.MAX_SAFE_INTEGER 的 session 事件会**永久**压住之后所有人的同一条会话 —— 改成员、改名、退出全会再也生效不了，而且谁都翻不了盘",
+      "find": "    physicalMs(e.ts) <= Date.now() + MAX_CLOCK_SKEW_MS &&",
+      "replace": "    true &&"
+    },
+    {
+      "id": "sendfile-drops-ack",
+      "file": "src/transport/local.ts",
+      "suite": "p2p-transport-selftest",
+      "what": "发文件时只在折叠已经追上时才 ack（复现原来的 `if (parsed)` 没有 else）。而 publish 之后折叠是**排队**的，parsed 恰好为空 —— 于是既不 ack 也不报错，界面上那条乐观消息永远停在「传输中…」，而「重发」只对 failed 渲染，用户连手动救一下的机会都没有",
+      "find": "    // 和 `send()` 同理：只 ack，不自己造 `message:new`。\n    this.emit('message:ack', { clientId: input.clientId, message })\n  }",
+      "replace": "    // 和 `send()` 同理：只 ack，不自己造 `message:new`。\n    if (parsed) this.emit('message:ack', { clientId: input.clientId, message })\n  }"
+    },
+    {
+      "id": "safeimage-allows-external-url",
+      "file": "src/utils/safeImage.ts",
+      "suite": "p2p-selftest",
+      "what": "图片地址不做白名单，任何字符串都放行。imageUrl 来自对端自己拼的 JSON（整个消息体打包进密文），随后直通 <img src> —— 于是一个 https 地址就能在别人的机器上插出网信标：谁打开、何时打开、出口 IP 全被外面那个服务器知道，而这是个宣称「纯局域网、不联网」的产品",
+      "find": "  return /^data:image\\/(png|jpeg|webp|gif|svg\\+xml);base64,/.test(value) ? value : undefined",
+      "replace": "  return value"
+    },
+    {
+      "id": "fold-drops-reply-to",
+      "file": "src/p2p/fold.ts",
+      "suite": "p2p-selftest",
+      "what": "折叠器不搬引用条和 @ 列表。它们确实被写进了事件体（发送侧的 send() 里就有），所以「发出去的事件里有这个字段」一类的测试照绿；但界面读的是折叠结果，于是引用条只在本地乐观消息上闪一下 —— ack 一到，本地那条被折叠结果整个替换掉，引用条当场消失，对端从头到尾没显示过。发送方只会以为自己眼花",
+      "find": "    replyTo: asReplyRef(body.replyTo),\n    mentions: asMentions(body.mentions),\n",
+      "replace": ""
+    },
+    {
+      "id": "fold-does-not-truncate-reply",
+      "file": "src/p2p/fold.ts",
+      "suite": "p2p-selftest",
+      "what": "引用条不截断。excerpt 是发送方填的自由文本，会原样进内存、进 localStorage、进每一帧同步；一个填了几百 KB 摘要的引用条就能把整个节点拖住，而功能测试照绿（内容确实一字不差地搬过来了）",
+      "find": "    authorName: authorName.slice(0, MAX_REPLY_AUTHOR_CHARS),\n    excerpt: excerpt.slice(0, MAX_REPLY_EXCERPT_CHARS),",
+      "replace": "    authorName,\n    excerpt,"
+    },
+    {
+      "id": "cryptoseq-truncate-forgets-index",
+      "file": "src/store/cryptoSeq.ts",
+      "suite": "crypto-seq-selftest",
+      "what": "丢最旧的「见过」记录时只从数组里 splice、忘了同步删索引。索引于是越来越长，而且记着一批已经被丢掉、名义上早就不在保护窗口里的 key —— 那些重放再也认不出来。更糟的是它把「上限」变成了假的：数组看起来在轮转，集合里却留着全部历史",
+      "find": "    for (const dropped of list.splice(0, list.length - SEEN_PER_SESSION)) index.delete(dropped)",
+      "replace": "    list.splice(0, list.length - SEEN_PER_SESSION)"
+    },
+    {
+      "id": "log-deferred-no-global-cap",
+      "file": "src/p2p/log.ts",
+      "suite": "p2p-selftest",
+      "what": "积压只按作者淘汰，没有全局上限。每个作者桶都能装 256 条，而「丢一整桶」正好腾出 256 个位置 —— 于是一进一出，桶数永远不超 512、看着很乖，总量却能长到 13 万条，比整个日志的 5 万还多。未经任何验签的垃圾就这样合法地吃掉了比真人更多的内存",
+      "find": "    while (this.deferredIds.size > MAX_DEFERRED_EVENTS) {\n      const oldestId = this.deferredIds.keys().next().value",
+      "replace": "    while (false) {\n      const oldestId = this.deferredIds.keys().next().value"
+    },
+    {
+      "id": "log-open-reads-oldest-first",
+      "file": "src/p2p/log.ts",
+      "suite": "p2p-selftest",
+      "what": "`open()` 正着读文件。`compact()` 之后文件正是 (ts,id) 升序，而日志满时是**后来的**被 'full' 拒收 —— 于是正着读活下来的恰好是文件里最靠前、也就是**最老**的那批，被丢掉的永远是最新的。重启一次丢一次最近的聊天记录，而且全程不报错",
+      "find": "    for (const line of [...lines].reverse()) {",
+      "replace": "    for (const line of lines) {"
+    },
+    {
+      "id": "log-flush-ignores-cap",
+      "file": "src/p2p/log.ts",
+      "suite": "p2p-selftest",
+      "what": "从积压里放行事件时不看日志上限。上限原本只挂在 `ingest` 那个入口上，所以灌满 deferred 再发一条 profile 就能一次把几万条塞进已验证集合 —— 而 `open()` 走的正是这条路，启动时会直接绕过上限",
+      "find": "      if (this.verified.size >= this.maxEvents) continue // 满了：剩下的丢掉",
+      "replace": "      if (false) continue // 满了：剩下的丢掉"
+    },
+    {
+      "id": "node-frame-trusts-sender",
+      "file": "src/p2p/node.ts",
+      "suite": "p2p-node-selftest",
+      "what": "帧通道不查来源 —— event.from 是对方自己填的字符串，hello 只校验「非空、不超长」，不跟公钥绑。一条自称「我就是你」的帧就能拿到任意文件字节（maySeeBlob 曾经放行 selfId）、整个日志（sync）、或让本机把文件发回去（blob-want）。功能测试全绿，因为正常的对端本来就在表里。",
+      "find": "        if (event.from === this.selfId) {\n          this.problem('收到一条自称来自我本人的帧，已忽略')\n          return\n        }\n        const sender = this.peers.get(event.from)\n        if (!sender?.connected) {\n          this.problem(`收到一条来自未知对端 ${event.from.slice(0, 8)} 的帧，已忽略`)\n          return\n        }\n",
+      "replace": "        // 变异：不查来源\n"
+    },
+    {
+      "id": "node-receipt-accepts-any-blob",
+      "file": "src/p2p/node.ts",
+      "suite": "p2p-node-selftest",
+      "what": "入站不检查「我们要过没有」—— 任何连上来的进程都能推 32 MB 的块，把 256 MB 的仓库灌满；`put()` 是拒收不是挤掉，真文件从此放不进来。哈希校验挡不住：它保证内容没被改过，不是「我本来想要它」。功能性用例全绿，因为该收到字节的人本来就收得到。",
+      "find": "    if (!this.blobsWeAsked.has(id) && !this.isDeclaredBlob(id) && !this.blobAudience.has(id)) {\n",
+      "replace": "    if (false && !this.isDeclaredBlob(id) && !this.blobAudience.has(id)) {\n"
+    },
+    {
+      "id": "node-blob-audience-overwrites",
+      "file": "src/p2p/node.ts",
+      "suite": "p2p-node-selftest",
+      "what": "同一坨字节第二次共享时把名单整个覆盖 —— 第一份名单里的人被踢出去，明明该看到却在推和取时被当局外人。功能测试看不出来：每次共享都有一个「该收到的人」收到了。",
+      "find": "    const known = this.blobAudience.get(id)\n    if (known) {\n      for (const member of audience) known.add(member)\n    } else {\n      this.blobAudience.set(id, new Set(audience))\n    }\n",
+      "replace": "    this.blobAudience.set(id, new Set(audience))\n"
+    },
+    {
+      "id": "node-blob-want-unbounded",
+      "file": "src/p2p/node.ts",
+      "suite": "p2p-node-selftest",
+      "what": "一帧 blob-want 不封顶 —— 对方往一帧里塞最多 6 万个 id，而我们是逐 id 回一整帧 blob-data，约 1 MB 的请求能换最多 6 万帧出去。发送侧那个「64 一批」是给自己定的礼貌，不能替对方设防。",
+      "find": "        const asked = frame.ids.slice(0, MAX_BLOB_WANT_IDS)\n",
+      "replace": "        const asked = frame.ids\n"
+    },
+    {
+      "id": "event-keeps-extra-top-level-keys",
+      "file": "src/p2p/event.ts",
+      "suite": "p2p-selftest",
+      "what": "不再剥掉签名覆盖不到的顶层字段 —— 任何一个对端都能往事件里塞任意字段，而它既没被签名、也会被 fanout 与 sync 原样转发进别人的日志。",
+      "find": "  if (Object.keys(event).length === EVENT_KEY_COUNT) return event\n",
+      "replace": "  if (Object.keys(event).length >= EVENT_KEY_COUNT) return event\n"
+    },
+    {
+      "id": "log-accept-does-not-observe-clock",
+      "file": "src/p2p/log.ts",
+      "suite": "p2p-selftest",
+      "what": "收下验过签的事件时不抬本地时钟 —— 回到审查时那个状态：observe 全仓零调用，hlc.ts 承诺的「收到别人的时间戳就追上去」是假的，表快的机器永久赢下每一次冲突。",
+      "find": "    this.clock?.observe(event.ts)\n",
+      "replace": "    void this.clock\n"
+    },
+    {
+      "id": "log-compact-without-open",
+      "file": "src/p2p/log.ts",
+      "suite": "p2p-selftest",
+      "what": "compact() 丢掉 loaded 守卫 —— 在 open() 之前调一次就把磁盘上的日志重写成 0 行（all() 基于空的 verified）。open() 一直有这道守卫，这里先前没有。",
+      "find": "    if (!this.loaded) throw new Error('compact() 之前必须先 open()')\n",
+      "replace": "    void this.loaded\n"
+    },
+    {
+      "id": "device-import-ignores-fingerprint",
+      "file": "src/crypto/device.ts",
+      "suite": "crypto-selftest",
+      "what": "导入身份包时不比对指纹 —— 一份「声称是 A、实际装着 B 的私钥」的包能顺利装进来，而界面显示的是本地算出来的那个（B）指纹，用户没有任何东西能对出来换人了。export 写了 fingerprint 字段，import 却当它不存在。",
+      "find": "  if (declared !== fingerprint) {\n    throw new Error('身份包的指纹和里面的密钥对不上 —— 这份包被改过，已拒绝导入')\n  }\n",
+      "replace": "  void declared\n  void fingerprint\n"
+    },
+    {
+      "id": "device-import-accepts-missing-fingerprint",
+      "file": "src/crypto/device.ts",
+      "suite": "crypto-selftest",
+      "what": "不要求身份包带 fingerprint 字段 —— 缺了这个字段就没法确认包里装的是谁的密钥，只能靠用户自己肉眼比，而界面上并不会显示「包里声称的是谁」。",
+      "find": "  if (typeof declared !== 'string' || declared.length === 0) {\n    throw new Error('身份包里没有 fingerprint 字段，无法确认它装的是谁的密钥')\n  }\n",
+      "replace": "  void declared\n"
+    },
+    {
+      "id": "keyownership-self-not-stale-owner",
+      "file": "src/crypto/keyOwnership.ts",
+      "suite": "crypto-selftest",
+      "what": "建钥人换成本机时也一律拒收 —— 回到报告 M1 那个终态：新 owner 拿不到旧钥匙、也不去建新的，会话双向全哑、全程零报错。",
+      "find": "    return owner && selfId === owner ? 'stale_owner' : 'reject'\n",
+      "replace": "    void selfId\n    return 'reject'\n"
+    },
+    {
+      "id": "keyownership-null-owner-accepts",
+      "file": "src/crypto/keyOwnership.ts",
+      "suite": "crypto-selftest",
+      "what": "算不出建钥人时放行 —— 会话还没折进本地状态（key 事件先于 session 事件到达，合法时机）时任何人的密钥包都收，等于把「谁有资格」这道唯一不依赖对端的闸门关掉。",
+      "find": "  if (!owner || senderId !== owner) {\n",
+      "replace": "  if (owner && senderId !== owner) {\n"
+    },
+    {
+      "id": "session-rotation-keeps-version-1",
+      "file": "src/crypto/session.ts",
+      "suite": "crypto-selftest",
+      "what": "新建钥匙时无视日志里已经发布过的版本，一律从第 1 版开始 —— 对端对平级版本只补空缺，于是这把新钥匙发出去会回 added: []，本地却拿它发消息：双向全哑、零报错。",
+      "find": "    const version = (options.minVersion ?? 0) + 1\n",
+      "replace": "    const version = 1\n"
+    },
+    {
+      "id": "session-accept-drops-history",
+      "file": "src/crypto/session.ts",
+      "suite": "crypto-selftest",
+      "what": "收下更高版本时丢掉旧钥匙 —— 于是「重建一把钥匙」的代价是全部历史消息变空气泡，轮换这条路谁都不敢走（报告 M2 的终态）。",
+      "find": "    if (existing) history.set(existing.version, existing.key)\n",
+      "replace": "    void existing\n"
+    },
+    {
+      "id": "session-decrypt-ignores-version",
+      "file": "src/crypto/session.ts",
+      "suite": "crypto-selftest",
+      "what": "解密时无视消息自带的 keyVersion、一律用当前那把试 —— 留着旧钥匙也没用，同等于轮换即丢失历史。",
+      "find": "    const key =\n      entry.version === keyVersion ? entry.key : (entry.history.get(keyVersion) ?? entry.key)\n",
+      "replace": "    const key = entry.key\n"
+    },
+    {
+      "id": "plaintext-ignores-pending",
+      "file": "src/store/plaintext.ts",
+      "suite": "chat-store-selftest",
+      "what": "不再排除还没落地的乐观消息 —— 乐观消息是拿入参直接铺的，天生没有 cipher 又天生带 text，于是**每发一条正常加密的消息**都会在 ack 回来之前闪一下「明文发出去了」。功能上什么都没坏，但这条警告从此没人信：它会出现在最常走的那条路上",
+      "find": "  if (message.pending || message.failed) return false\n",
+      "replace": "  void message.pending\n  void message.failed\n"
+    },
+    {
+      "id": "plaintext-fileid-is-plaintext",
+      "file": "src/store/plaintext.ts",
+      "suite": "chat-store-selftest",
+      "what": "把 fileId 也算成「正文」—— 可 fileId / fileName 本来就在信封外面（发送路径只把 text / imageUrl / stickerKey 塞进密文），于是**每一次传文件**都被误报成明文泄露。这条误报最伤：它出现在一个完全正常、天天在做的操作上",
+      "find": "  return Boolean(message.text || message.imageUrl || message.stickerKey)\n",
+      "replace": "  return Boolean(message.text || message.imageUrl || message.stickerKey || message.fileId)\n"
+    },
+    {
+      "id": "plaintext-ignores-cipher",
+      "file": "src/store/plaintext.ts",
+      "suite": "chat-store-selftest",
+      "what": "不再看 cipher，只按「有没有正文字段」判 —— 于是一条正文还在外面的加密消息（发送路径那句「留着等于明文照样发出去了」就是说这个）被当成明文。反过来更危险的方向也存在：判定一旦和「真的加密了没有」脱钩，这条提示就不再是证据了",
+      "find": "  if (message.cipher) return false\n",
+      "replace": "  void message.cipher\n"
+    },
+    {
+      "id": "fold-leave-forces-author-back",
+      "file": "src/p2p/fold.ts",
+      "suite": "p2p-selftest",
+      "what": "改成员列表时把作者硬塞回去（复现原来的 `new Set([...members, event.author])`）—— 退出事件被就地改写成「还在成员里」，每台设备折出来都一样，于是「退出」在任何地方都不生效，重启后会话原样复现。功能测试全绿，因为建群、拉人、改名走的都不是这条路",
+      "find": "    memberIds: [...new Set(members)].sort(),\n",
+      "replace": "    memberIds: [...new Set([...members, event.author])].sort(),\n"
+    },
+    {
+      "id": "fold-leave-requires-author-in-new-list",
+      "file": "src/p2p/fold.ts",
+      "suite": "p2p-selftest",
+      "what": "准入规则变回「作者必须在**新的**成员列表里」（报告 M9 的原状）—— 这条对建会话是对的，对退出自相矛盾：退出就是要把自己从列表里去掉。于是退出事件被每一台设备丢掉，而本地已经把会话从界面上摘了，重启之后它又回来",
+      "find": "  if (!existing) {\n    if (!members.includes(event.author)) return\n  } else if (!existing.memberIds.includes(event.author)) {\n    return // 不是（或不再是）成员，无权改成员列表\n  }\n",
+      "replace": "  if (!members.includes(event.author)) return\n"
+    },
+    {
+      "id": "fold-leave-can-rejoin-itself",
+      "file": "src/p2p/fold.ts",
+      "suite": "p2p-selftest",
+      "what": "不检查「改之前是不是成员」—— 已经退出的人可以再签一条把自己加回成员列表的事件，于是「退出」变成可逆的礼貌动作：被踢出去的人（或主动退出又反悔的人）随时能自己加回来。",
+      "find": "  } else if (!existing.memberIds.includes(event.author)) {\n",
+      "replace": "  } else if (false) {\n"
+    },
+    {
+      "id": "envelope-wrap-aad-drops-session",
+      "file": "src/crypto/envelope.ts",
+      "suite": "crypto-selftest",
+      "what": "密钥包的 AAD 退回到只绑「发件人 + 收件人」，丢掉会话 id —— 于是同一对人在两个群里都在时，包可以跨会话搬运：Mallory 把「爱丽丝为 S1 写给鲍勃的包」塞进 S2，鲍勃被顶到 S1 的钥匙上并在 S2 里用它加密，而 Mallory 手里有 S1 的钥匙，鲍勃在 S2 说的话她全能读。既有测试只验证了「转给第三方解不开」，那条在缺 sessionId 时照样通过",
+      "find": "  return `wrap|${sessionId}|${senderId}|${recipientId}`\n",
+      "replace": "  return `wrap|${senderId}|${recipientId}`\n"
+    },
+    {
+      "id": "node-sync-no-rate-limit",
+      "file": "src/p2p/node.ts",
+      "suite": "p2p-node-selftest",
+      "what": "不给 `sync` 节流 —— 一个对端用 25 字节的包换整个日志（最多 ~98 帧），线速重复就能把所有其他对端的帧挤出那条全局串行队列。",
+      "find": "        if (!this.takeSyncToken(from, this.syncNow())) {",
+      "replace": "        if (false) {"
+    },
+    {
+      "id": "node-sync-token-never-refills",
+      "file": "src/p2p/node.ts",
+      "suite": "p2p-node-selftest",
+      "what": "每次请求都把令牌桶的时间戳推到「现在」—— 桶永远填不回来，于是**正常**的补日志（markDirty 那一次重试）也拿不到令牌，丢了帧就再也补不回来。",
+      "find": "      at = gained > 0 ? now : prev.at",
+      "replace": "      at = now"
+    },
+    {
+      "id": "rust-link-accepts-self-id",
+      "file": "src-tauri/src/net/link.rs",
+      "suite": "rust",
+      "what": "允许一条自称是**我本人**的链路握手成功 —— 之后 `node.rs` 会把它的每一帧以 `from = 我的 id` 投上去，上层只能靠 `event.from === selfId` 那条守卫顶回来（而那道守卫挡不住「自称是我认识的某个人」）。",
+      "find": "    if peer_id == self_id {",
+      "replace": "    if false && peer_id == self_id {"
+    },
+    {
+      "id": "session-test-hook-ungated",
+      "file": "src/crypto/session.ts",
+      "suite": "p2p-transport-selftest",
+      "why": "测试专用的密钥导出接口没有开关 —— exportKeyForTest / installForTest 住在生产模块里，只要能 import 到这个类就能把会话密钥导成 base64 带走。加开关的意义在于「误用当场炸」而不是安静地把钥匙交出去；去掉之后生产路径拿到的是一个看起来完全正常、返回合法密钥字节的函数",
+      "find": "    if (!testHooksEnabled) throw new Error(TEST_HOOKS_OFF)\n    const entry = this.keys.get(sessionId)\n",
+      "replace": "    const entry = this.keys.get(sessionId)\n"
+    },
+    {
+      "id": "keys-accepts-small-order",
+      "file": "src/crypto/keys.ts",
+      "suite": "crypto-selftest",
+      "why": "X25519 公钥不再拒收小阶点（全零 / 0x01）—— 整会话建不出钥匙、全员静默明文。x 来自对端 profile 事件，是任何人都能用的输入；deriveBits 抛 OperationError，异常穿透 createFor → keyPublish 永不执行，界面上一点提示都没有。",
+      "find": "  if (bytes.length !== 32 || bytes.every((b) => b === 0) || (bytes[0] === 1 && bytes.every((b, i) => i === 0 || b === 0))) {\n    throw new Error('这个 X25519 公钥是小阶点，用它算不出共享密钥')\n  }\n",
+      "replace": "  if (bytes.length !== 32) {\n    throw new Error('公钥长度不对')\n  }\n"
+    },
+    {
+      "id": "session-wrap-loop-unguarded",
+      "file": "src/crypto/session.ts",
+      "suite": "crypto-selftest",
+      "why": "封包循环恢复成「不跳人」—— 一个成员的 x 有问题（小阶点、base64 坏了、长度不对）时 deriveBits 抛出去穿透 createFor，keyPublish 永不执行，这个会话全员拿不到钥匙，而消息照发明文。跳过个别成员是有代价的，但「少一个人」远好过「全员明文」。",
+      "find": "      try {\n        const theirPub = await importPublicX(member.x)\n        wrapped[member.id] = await wrapSessionKey(\n          this.identity.xPrivate,\n          theirPub,\n          key,\n          sessionId,\n          this.selfId,\n          member.id,\n        )\n      } catch (error) {\n        console.warn(\n          `[crypto] 会话 ${sessionId}：给 ${member.id} 的密钥包封不出来，跳过这个人。`,\n          error,\n        )\n      }\n",
+      "replace": "      const theirPub = await importPublicX(member.x)\n      wrapped[member.id] = await wrapSessionKey(\n        this.identity.xPrivate,\n        theirPub,\n        key,\n        sessionId,\n        this.selfId,\n        member.id,\n      )\n"
+    },
+    {
+      "id": "tauri-net-toBytes-object-blind",
+      "file": "src/p2p/tauri-net.ts",
+      "suite": "tauri-net-selftest",
+      "note": "只认数组形式的字节。Tauri 有的路径给的是 {\"0\":7,...}，此时 Uint8Array.from 会静默产出空数组 —— 症状是「每条同步都失败，报错却指向解密」",
+      "find": "  if (data && typeof data === 'object') {\n    const keys = Object.keys(data).map(Number).sort((a, b) => a - b)\n    if (keys.length > 0 && keys.every((k, i) => k === i)) {\n      return Uint8Array.from(keys.map((k) => data[k]))\n    }\n  }\n",
+      "replace": "  if (data && typeof data === 'object') return Uint8Array.from(data as unknown as number[])\n"
+    },
+    {
+      "id": "tauri-net-unsubscribe-before-resolve-lost",
+      "file": "src/p2p/tauri-net.ts",
+      "suite": "tauri-net-selftest",
+      "note": "订阅还没落地就退订时不再补 unlisten。后果是 start() 之后立刻 stop() 留下一条永远活着的监听器 ——「停掉的节点仍然在收帧」",
+      "find": "      if (stopped || this.unlistenPending) {\n        // 订阅还没落地就已经退订了：立刻补一次，不然这条监听器会一直活着。\n        unlisten()\n        return\n      }\n",
+      "replace": "      if (stopped) {\n        return\n      }\n"
+    },
+    {
+      "id": "notify-escape-drops-lt",
+      "file": "src-tauri/src/notify.rs",
+      "suite": "rust",
+      "note": "通知正文不再转义 `<`。消息正文来自对端，一把尖括号就能让整条 toasts 的 XML 解析失败 —— 而失败的表现是「什么都没弹」，不报错、日志里也没有，是最难查的一类",
+      "find": "            '<' => out.push_str(\"&lt;\"),\n",
+      "replace": ""
+    },
+    {
+      "id": "fold-sentat-keeps-hlc-encoding",
+      "file": "src/p2p/fold.ts",
+      "suite": "p2p-transport-selftest",
+      "note": "消息的 sentAt 直接存事件的 ts（HLC 编码值，毫秒×1000），不做物理毫秒换算。差 1000 倍不会让任何断言变红：消息照收、顺序照排，坏在界面上 —— 每条消息显示公元 58761 年、日期分隔线每 86 秒一条、5 分钟分组永远不生效。唯一能抓住它的判据是「这个数像不像当前时间」",
+      "find": "    // 和发送顺序无关。\n    sentAt: tsToMillis(event.ts),",
+      "replace": "    // 和发送顺序无关。\n    sentAt: event.ts,"
+    }
+  ]
+}

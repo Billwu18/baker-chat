@@ -1,0 +1,13 @@
+# 统一行尾，避免 Windows 上贡献者每次提交都产生「整文件重写」的 diff
+* text=auto eol=lf
+
+# 二进制，别让 git 当成文本做行尾转换
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.webp binary
+*.ico  binary
+*.icns binary
+*.ttf  binary
+*.otf  binary
+*.zip  binary

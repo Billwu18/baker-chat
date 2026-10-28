@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安全问题 / Security report
+    url: https://github.com/Billwu18/baker-chat/security/advisories/new
+    about: 请不要开 public issue；按 SECURITY.md 私下报告漏洞。
+  - name: 怎么搭起来
+    url: https://github.com/Billwu18/baker-chat#快速开始
+    about: 装不上、跑不起来，先看 README 的「快速开始」。

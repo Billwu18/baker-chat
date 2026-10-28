@@ -1,0 +1,56 @@
+{
+  "name": "baker-chat",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "纯局域网、端到端加密的桌面聊天客户端（Tauri 2 + React 19）。界面参考《明日方舟：终末地》的 Baker 界面，非官方项目。",
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run typecheck && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.tools.json",
+    "typecheck:src": "tsc --noEmit",
+    "typecheck:tools": "tsc --noEmit -p tsconfig.tools.json",
+    "tauri": "tauri",
+    "desktop:dev": "tauri dev",
+    "desktop:build": "tauri build",
+    "test": "pwsh -File tools/check-all.ps1",
+    "test:mutation": "pwsh -File tools/mutation-check.ps1"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.12.3",
+    "jsqr": "^1.4.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.2",
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.7"
+  },
+  "license": "MIT",
+  "author": "baker-chat contributors",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Billwu18/baker-chat.git"
+  },
+  "homepage": "https://github.com/Billwu18/baker-chat#readme",
+  "bugs": {
+    "url": "https://github.com/Billwu18/baker-chat/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "lan",
+    "p2p",
+    "e2e-encryption",
+    "tauri",
+    "react",
+    "chat"
+  ]
+}

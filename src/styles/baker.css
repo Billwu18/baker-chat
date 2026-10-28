@@ -1,0 +1,2076 @@
+/* ==========================================================================
+   Baker 聊天客户端 —— 界面样式
+   --------------------------------------------------------------------------
+   这份样式表是照着游戏《明日方舟：终末地》Baker 聊天界面的原版 CSS 逐条移植的。
+   原版数值（420×85 的会话卡、65px 的标题栏、80px 的输入区、26/40/50/40 的
+   外边距、气泡九宫格 slice 20 20 18 30 等）全部保留，只做了两件事：
+
+     1. px → rem 换算（除以 16），这样只改根字号就能整体等比缩放，
+        在 1080p 以外的窗口尺寸下依然保持一模一样的比例；
+       换算规则统一是 n px = n/16 rem。
+     2. 素材地址从硬编码改成 var(--xxx)，由 src/styles/assetVars.ts 注入。
+
+   对照文件：ref/baker-dx-main/assets/styling/main.css
+   （那份参考仓库已从工作区删除 —— 当时只用于逐条核对原版数值，
+     样式本身早已移植完，不依赖它。真要再对照，见 README 里的素材来源。）
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. 全局重置（原版 main.css L1-49）
+   -------------------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  /* 游戏里用的是 HarmonyOS Sans；系统没装时按顺序退到方舟常用的几个中文字体 */
+  font-family: 'HarmonyOS Sans', 'HarmonyOS Sans SC', 'Source Han Sans SC', 'Noto Sans SC',
+    'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif;
+  color: white;
+  list-style: none;
+  overflow-wrap: anywhere;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+/*
+ * 等比缩放：游戏的设计稿是 1920×1080、根字号 16px，也就是 1vw = 12px、1vh = 16px。
+ * 取两者较小值，再夹一个上下限，保证窗口很窄或很扁时布局不会散架。
+ * 16/1920 = 0.8333vw，16/1080 = 1.4815vh。
+ */
+html {
+  /* 缩放口径：以**高度**为基准，1 设计 px 对 1/1080 视口高。
+     原来写的是 min(0.8333vw, 1.4815vh)（相当于 contain），在 16:9 窗口下两种
+     算法结果一样，但一到 16:10 / 带侧栏的窗口就会整块缩得比游戏小 ——
+     实测 2559×1541 时卡片比游戏原图小约 10%。游戏是按高度铺的，这里跟它对齐。 */
+  font-size: clamp(10px, 1.4815vh, 34px);
+}
+
+body {
+  background-color: #2c2c2c;
+}
+
+input,
+button,
+textarea {
+  outline: none;
+  color: black;
+  font: inherit;
+}
+
+input[type='text'],
+textarea {
+  border-style: solid;
+  border-width: 0;
+  border-radius: 0;
+}
+
+textarea:focus,
+input:focus {
+  outline: none;
+}
+
+button {
+  border-style: none;
+  cursor: pointer;
+  background: none;
+  padding: 0;
+}
+
+/*
+ * 键盘用户必须看得见焦点在哪儿。
+ *
+ * 上面把 `outline` 一关了之 —— 对鼠标是对的（点一下不该留个虚线框），
+ * 对键盘是灾难：Tab 走一整圈，屏幕上没有任何东西告诉你现在停在哪个
+ * 按钮上，整台机器的操作链就断在这里。
+ *
+ * `:focus-visible` 是浏览器替我们做的区分：**只有键盘**（或其它非指针
+ * 方式）落到这里的焦点才会命中它，鼠标点击不会。所以它既给了键盘焦点环，
+ * 又不会让鼠标用户看到多余的框。颜色取界面里那抹黄（#ffef00）。
+ *
+ * 三个选择器都要写：上面 `textarea:focus, input:focus` 的权重是 (0,1,1)，
+ * 单写一个 `:focus-visible` (0,1,0) 压不住它，输入框会照旧没有焦点环 ——
+ * 而输入框恰恰是最需要「光标到底在不在里面」的地方。
+ */
+:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+button:focus-visible {
+  outline: 2px solid #ffef00;
+  outline-offset: 2px;
+}
+
+/* 窄滚动条，对应原版里那条很细的指示条 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgb(255 255 255 / 0.22);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(255 255 255 / 0.36);
+}
+
+.flex {
+  display: flex;
+}
+
+.flex-column {
+  flex-direction: column;
+}
+
+.flex-row {
+  flex-direction: row;
+}
+
+/* --------------------------------------------------------------------------
+   2. 背景与应用外壳（原版 main.css L63-99）
+   -------------------------------------------------------------------------- */
+
+#background-image {
+  position: fixed;
+  inset: 0;
+  z-index: -325;
+  width: 100vw;
+  height: 100vh;
+  object-fit: cover;
+  /* 原版就是 blur(10px)，照抄；背景之上的压暗交给 #app-backdrop */
+  filter: blur(10px) saturate(0.85);
+  transform: scale(1.06);
+}
+
+/*
+ * 背景之上再压一层黑，保证文字对比度，对应原版 :root 的 #2c2c2c 底色。
+ *
+ * 注意这一层是**故意偏离原版**的：游戏里只有 #background-image{filter:blur(10px)}、
+ * 没有遮罩，因为游戏用的是一张本来就压暗过的场景图。我们默认这张是参考站的立绘背景，
+ * 不压一层的话中间那张脸会一直抢注意力，所以留一个偏轻的遮罩（0.6 而不是 0.74）。
+ */
+#app-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -324;
+  background: rgb(20 20 19 / 0.6);
+  pointer-events: none;
+}
+
+#app {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: 1.625rem 2.5rem 3.125rem 2.5rem;
+  gap: 3.125rem;
+}
+
+/* --------------------------------------------------------------------------
+   3. 标题（原版 main.css L75-88）
+   -------------------------------------------------------------------------- */
+
+#title {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 1.1em;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+}
+
+#title > img {
+  position: absolute;
+  top: -0.75rem;
+  left: 0;
+  width: 3.4375rem;
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* 标题文字本身：窄窗口里也不许折行 —— 折了会把状态挤到第二行去 */
+#title .title-text {
+  white-space: nowrap;
+}
+
+/*
+ * 标题右边的连接状态 —— 原版没有这个东西，加了就破坏一比一，所以默认完全透明：
+ * 只有连接不是 connected（真出事了），或者鼠标移到这一行上（想主动看 UID）时才浮现。
+ * 这样静止画面跟游戏一模一样，但「这是哪台机器连着」这件事仍然看得见。
+ *
+ * 它是 #title 里的**普通流元素**，紧跟在标题文字后面。上一版是 position:absolute; right:0，
+ * 而 #title 在纵向 flex 容器里 align-items 默认 stretch、会撑满整幅宽 —— 于是
+ * 「已连接 · UID」被甩到了屏幕最右端，离标题一整个窗口那么远。跟着文字走，才读得出
+ * 「这行说的是我刚看的那个标题」。
+ *
+ * 用 opacity 而不是 display / visibility：它一直占着位置，鼠标扫过时才不会有东西
+ * 把右边的图标挤动一下。
+ */
+#title-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85em;
+  color: rgb(255 255 255 / 0.62);
+  white-space: nowrap;
+  cursor: default;
+  opacity: 0;
+  transition: opacity 0.15s linear;
+}
+
+#title:hover #title-status,
+#title-status[data-connection='idle'],
+#title-status[data-connection='connecting'],
+#title-status[data-connection='reconnecting'],
+#title-status[data-connection='offline'] {
+  opacity: 1;
+}
+
+#title-status .dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: #6e6e6e;
+}
+
+#title-status .dot[data-state='connected'] {
+  background: #7ee787;
+  box-shadow: 0 0 0.5rem rgb(126 231 135 / 0.7);
+}
+
+#title-status .dot[data-state='connecting'],
+#title-status .dot[data-state='reconnecting'] {
+  background: #f0c674;
+  animation: pulse 1.1s ease-in-out infinite;
+}
+
+#title-status .dot[data-state='offline'] {
+  background: #e5534b;
+}
+
+/* --------------------------------------------------------------------------
+   4. 主体两栏（原版 main.css L100-105）
+   -------------------------------------------------------------------------- */
+
+#main-content {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  gap: 1.25rem;
+  height: 100%;
+  min-height: 0;
+}
+
+/* --------------------------------------------------------------------------
+   5. 左侧会话列表（原版 main.css L107-203）
+   -------------------------------------------------------------------------- */
+
+#cards-column {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  flex: 0 0 auto;
+  width: 26.25rem;
+  min-height: 0;
+}
+
+#cards-wrapper {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  /* 底部渐隐，暗示还能往下滚 */
+  mask-image: linear-gradient(to bottom, black 95%, transparent 100%);
+}
+
+#session-cards {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3125rem;
+}
+
+/* 「添加新会话」按钮 */
+#cards-new {
+  height: 2.625rem;
+  border-radius: 1.3125rem;
+  background-color: rgb(238 236 236);
+  padding: 0 1.3125rem;
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  transition: background-color 0.12s linear;
+}
+
+#cards-new:hover {
+  background-color: #fff;
+}
+
+#cards-new span {
+  color: #444444;
+  font-size: 1.05rem;
+  font-weight: 500;
+}
+
+#cards-new img {
+  height: 50%;
+  width: auto;
+}
+
+/* 会话卡片 */
+.card {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: row;
+  margin-bottom: 0.625rem;
+  background-color: #3c3c3c;
+  border: #737373 solid 0.125rem;
+  border-radius: 0.3125rem;
+  padding: 0.375rem 0.375rem 0.375rem 0.5rem;
+  width: 100%;
+  height: 5.3125rem;
+  cursor: pointer;
+  gap: 1.125rem;
+  align-items: center;
+  font-size: 1.15em;
+}
+
+.card:last-child {
+  margin-bottom: 0;
+}
+
+.card:hover {
+  background-color: #4c4c4c;
+}
+
+.card.is-active {
+  background-color: #4c4c4c;
+  border-color: #a8a8a8;
+}
+
+/* 卡片底纹 */
+.card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--deco_sns_tweet_decorate_02) no-repeat right center / auto 110%;
+  opacity: 0.025;
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* 卡片右下角的装饰线 */
+.card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    var(--sns_list_decorate_2) no-repeat top 0.5625rem right 0.75rem,
+    var(--deco_sns_tweet_decorate) no-repeat top 3.5rem left 6rem / 2.375rem 0.25rem;
+  opacity: 0.28;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.card:focus-visible {
+  outline: 2px solid #ffef00;
+  outline-offset: 2px;
+}
+
+#card-img-wrapper {
+  border: #555455 solid 0.0625rem;
+  border-radius: 0.25rem;
+  height: 100%;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  flex: 0 0 auto;
+  background-color: #2f2f2f;
+}
+
+#card-img-wrapper > img {
+  height: 100%;
+  width: 100%;
+  object-fit: cover;
+  scale: 1.28;
+}
+
+.card-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  overflow: hidden;
+}
+
+.card-name > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 头像格：套一层是为了放左上角那个未读角标（#card-img-wrapper 有 overflow:hidden） */
+.card-avatar {
+  position: relative;
+  height: 100%;
+  aspect-ratio: 1 / 1;
+  flex: 0 0 auto;
+}
+
+/* 有未读的会话，头像左上角挂一个小小的「”」角标（原版就是这个造型） */
+.card-avatar-flag {
+  position: absolute;
+  top: -0.3rem;
+  left: -0.3rem;
+  padding: 0 0.22rem;
+  background: #f2f2f2;
+  color: #1a1a1a;
+  font-size: 0.62em;
+  line-height: 1.15;
+  border-radius: 0.1rem;
+  pointer-events: none;
+}
+
+/* 最后一条消息摘要。
+   游戏原版卡片里**没有**这一行 —— 名称下面是一条装饰线（.card::after 的第二层）。
+   默认藏起来保持 1:1，设置里勾「显示消息摘要」才出现。 */
+.card-last {
+  display: none;
+  font-size: 0.62em;
+  color: rgb(255 255 255 / 0.5);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body.show-preview .card-last {
+  display: block;
+}
+
+/* 未读标记：原版是卡片右上角外侧的一枚橙色菱形
+   （原图量到约 26 源 px ≈ 18 设计 px）。原来做成黄色胶囊数字是照参考站抄的。 */
+.card-unread {
+  position: absolute;
+  top: -0.4rem;
+  right: -0.6rem;
+  width: 1.15rem;
+  height: 1.15rem;
+  background: #ff7a1a;
+  transform: rotate(45deg);
+  border-radius: 0.1rem;
+  pointer-events: none;
+}
+
+/* 卡片右下角的圆形展开钮：细描边圆 + 居中的下箭头，原版每张卡都有 */
+.card-chevron {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.5rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  border: 0.0625rem solid rgb(255 255 255 / 0.32);
+  pointer-events: none;
+}
+
+.card-chevron::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: 0.4rem;
+  height: 0.4rem;
+  margin-left: -0.2rem;
+  margin-top: -0.28rem;
+  border-right: 0.0625rem solid rgb(255 255 255 / 0.55);
+  border-bottom: 0.0625rem solid rgb(255 255 255 / 0.55);
+  transform: rotate(45deg);
+}
+
+/* --------------------------------------------------------------------------
+   6. 右侧会话区（原版 main.css L205-307）
+   -------------------------------------------------------------------------- */
+
+#session {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 0.625rem;
+  min-width: 0;
+  height: 100%;
+}
+
+/*
+ * 原版是 .flex.flex-column + justify-content:center，所以这个 center 是「竖直居中」，
+ * 不是水平居中——水平方向因为交叉轴默认 stretch，标题就从左边的 margin-left 起排。
+ * 这就是游戏里会话名靠左而不是居中的原因，别改成 row 居中。
+ */
+#session-header {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 4.0625rem;
+  height: 4.0625rem;
+  border: #838383 solid 0.125rem;
+  border-radius: 0.9375rem 0.9375rem 0 0;
+  background:
+    var(--session-title-left-bar) repeat-y scroll left center / 1.5625rem,
+    #3c3c3c var(--session-title-right-bar) no-repeat scroll right center / auto 100%;
+  justify-content: center;
+}
+
+#session-header span {
+  margin-left: 2.5rem;
+  font-size: 1.2em;
+}
+
+/* 会话区右下角的大号背景装饰件（原版 #session-decorate，固定定位在窗口右侧） */
+#session-decorate {
+  position: fixed;
+  top: 6.25rem;
+  right: -1.75rem;
+  z-index: -100;
+  transform: scale(0.8);
+  opacity: 0.2;
+  pointer-events: none;
+}
+
+#session-header-actions {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  gap: 0.75rem;
+  margin-right: 2.5rem;
+  font-size: 0.85em;
+  color: rgb(255 255 255 / 0.7);
+}
+
+#session-header-actions button {
+  color: inherit;
+  font-size: inherit;
+}
+
+#session-header-actions button:hover {
+  color: #ffef00;
+}
+
+#session-main {
+  --input-area-height: 5rem;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border: white solid 0.125rem;
+  border-top-width: 0;
+  border-radius: 0 0 0.9375rem 0.9375rem;
+  flex: 1;
+  min-height: 0;
+  background: #ffffff0b;
+}
+
+#session-main * {
+  font-weight: 500;
+}
+
+#main-content-top-decoration {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: row;
+  pointer-events: none;
+}
+
+#main-content-top-decoration-left {
+  flex: 1;
+  margin-right: -0.1875rem;
+  border-top: white solid 0.125rem;
+}
+
+#main-content-top-decoration-right {
+  flex: 0;
+  height: 0.625rem;
+  transform: translateX(0.09375rem) translateY(-0.0375rem);
+}
+
+#main-content-top-decoration-colors {
+  position: absolute;
+  mix-blend-mode: screen;
+  right: 2.5rem;
+  height: 0.19375rem;
+}
+
+#session-main-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 2%,
+    black 6%,
+    black calc(100% - 2.5rem),
+    transparent calc(100% - 1.25rem)
+  );
+  padding: 1.875rem 0 2.5rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* 会话列表还没选中时的占位。
+   原版参考图里是：一片点阵 + 两块交叠的菱形宝石 + 一条贯穿的细横线，
+   横线正中压一块深色标签写「- 请选择会话 -」，下面还有一行大字 EMPTY。 */
+#session-not-chosen {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.not-chosen {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.not-chosen-grid {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 32rem;
+  height: 19rem;
+  transform: translate(-50%, -50%);
+  background-image: radial-gradient(rgb(255 255 255 / 0.055) 1px, transparent 1px);
+  background-size: 1.5rem 1.5rem;
+  pointer-events: none;
+}
+
+.not-chosen-gem {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 12rem;
+  height: 12rem;
+  transform: translate(-46%, -50%);
+  pointer-events: none;
+}
+
+.not-chosen-gem::before,
+.not-chosen-gem::after {
+  position: absolute;
+  content: '';
+  background: rgb(255 255 255 / 0.04);
+}
+
+.not-chosen-gem::before {
+  left: 0;
+  top: 2rem;
+  width: 7.5rem;
+  height: 7.5rem;
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+}
+
+.not-chosen-gem::after {
+  right: 0;
+  top: 0;
+  width: 6rem;
+  height: 6rem;
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+}
+
+.not-chosen-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 0.0625rem;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgb(255 255 255 / 0.16) 16%,
+    rgb(255 255 255 / 0.16) 84%,
+    transparent
+  );
+  pointer-events: none;
+}
+
+.not-chosen-label {
+  position: relative;
+  z-index: 1;
+  padding: 0.4rem 1.5rem;
+  background: rgb(22 22 22 / 0.92);
+  color: #f2f2f2;
+  font-size: 1.5em;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.not-chosen-empty {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 5.5rem);
+  transform: translateX(-50%);
+  color: rgb(255 255 255 / 0.16);
+  font-size: 1.7em;
+  letter-spacing: 0.35em;
+  pointer-events: none;
+}
+
+/* --------------------------------------------------------------------------
+   7. 消息行与气泡 —— 原版 main.css L486-707 的逐条对照移植
+   -------------------------------------------------------------------------- */
+
+/*
+ * 行容器。原版这里只是一个内联的 div.flex.flex-row，没有任何样式；
+ * 水平内边距由 #session-main-content 的 padding: 30px 0 40px 0 决定（左右是 0），
+ * 所以千万不要在这里补 padding，否则头像会离边框太远。
+ */
+.message-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+}
+
+.message-row-avatar {
+  --avatar-size: 6.25rem; /* 100px */
+  --frame-size-percentage: 75%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex: 0 0 var(--avatar-size);
+}
+
+.message-row-avatar-background {
+  width: var(--avatar-size);
+  height: var(--avatar-size);
+  background:
+    var(--avatar-background) center / var(--avatar-size),
+    var(--avatar-frame) center / var(--frame-size-percentage) no-repeat;
+}
+
+/*
+ * 原版在 img 上把 --avatar-size 重定义成 calc(75% * 1.15)：
+ * var() 是文本替换，最终写成 calc(75% * 1.15) = 86.25%，百分比相对父级 100px 解析。
+ */
+.message-row-avatar img {
+  --avatar-size: calc(var(--frame-size-percentage) * 1.15);
+  width: var(--avatar-size);
+  height: var(--avatar-size);
+  clip-path: xywh(16% 15% 70% 70% round 100% 100% 100% 100%);
+  position: relative;
+  top: 0.25rem; /* 4px */
+}
+
+.message-row-content {
+  margin-top: 1.25rem; /* 20px */
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem; /* 10px */
+}
+
+.message-row-content-left {
+  align-items: flex-start;
+}
+
+.message-row-content-right {
+  align-items: end;
+}
+
+/* 气泡堆里的一条。原版直接用 MessageBubble 的根节点，这里加个钩子方便定位。 */
+/*
+ * 气泡堆里的一条。原版直接用 MessageBubble 的根节点做 .message-row-content 的子元素，
+ * 这里多套了一层 .message-row-item 来同时容纳「发言人名字」，所以必须显式撑满宽度：
+ * .message-row-content 是 align-items:flex-start 的纵向 flex，子项默认 shrink-to-fit，
+ * 会让里面的 .message-bubble-wrapper 的 max-width:65% 相对一个内容宽度的父级去算，
+ * 结果气泡被压成很窄的一条、文字提前换行。
+ */
+.message-row-item {
+  position: relative;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: inherit;
+  gap: 0.25rem;
+  max-width: 100%;
+}
+
+/*
+ * 发言人名字。**游戏原版里没有这个元素**（baker-dx 的 MessageRow 只画头像+气泡），
+ * 所以默认不渲染；只有打开「显示发言人名称」时才出现，见 uiSettings。
+ */
+.message-row-name {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin-bottom: 0.125rem;
+  font-size: 0.82em;
+  line-height: 1.2;
+  color: rgb(255 255 255 / 0.86);
+}
+
+.message-row-name > i {
+  font-style: normal;
+  font-size: 0.86em;
+  color: rgb(255 255 255 / 0.42);
+}
+
+/* ------------------------------------------------------------------ 气泡 */
+
+.message-bubble-wrapper {
+  max-width: 65%;
+  position: relative;
+}
+
+.message-bubble-wrapper:has(.message-bubble-sticker) {
+  /* 168px 图 + 20px 内边距 + 6px 边框 */
+  width: 12.125rem;
+}
+
+.message-bubble-wrapper:has(.message-bubble-image) {
+  min-width: 9.375rem;
+  max-width: 40%;
+}
+
+.message-bubble-wrapper > span,
+.message-bubble-wrapper > div {
+  border-image-repeat: repeat;
+  border-style: solid;
+  border-color: transparent;
+  font-size: 1.1em;
+  display: inline-block;
+  user-select: text;
+}
+
+.message-bubble-others {
+  border-image-source: var(--message-bubble-others);
+  border-image-slice: 20 20 18 30 fill;
+  border-image-width: 1.25rem 1.25rem 1.125rem 1.875rem;
+}
+
+.message-bubble-others > div:nth-child(1) {
+  padding: 0.5rem 0.625rem 0.625rem 1.25rem;
+}
+
+.message-bubble-others * {
+  color: white;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.message-bubble-self {
+  border-image-source: var(--message-bubble-self);
+  border-image-slice: 20 30 18 20 fill;
+  border-image-width: 1.25rem 1.875rem 1.125rem 1.25rem;
+}
+
+.message-bubble-self > div:nth-child(1) {
+  padding: 0.5rem 1.25rem 0.5rem 0.625rem;
+}
+
+.message-bubble-self * {
+  color: black;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.message-bubble-self *,
+.message-bubble-others * {
+  user-select: text;
+}
+
+/* 气泡里的内联 emoji 图，原版高度跟行高对齐，并用 inset 削掉素材白边 */
+.message-bubble-self:not(.message-bubble-image):not(.message-bubble-sticker) img,
+.message-bubble-others:not(.message-bubble-image):not(.message-bubble-sticker) img {
+  vertical-align: bottom;
+  height: 1.6em;
+  clip-path: inset(2px 2px 2px 2px);
+  transform: translateY(1px);
+}
+
+.message-bubble-animate-left {
+  animation: bubble-slide-in-left 0.1s cubic-bezier(1, 0, 1, 0.8);
+  transform-origin: left center;
+}
+
+.message-bubble-animate-right {
+  animation: bubble-slide-in-right 0.1s cubic-bezier(1, 0, 1, 0.8);
+  transform-origin: right center;
+}
+
+@keyframes bubble-slide-in-left {
+  from {
+    transform: scaleX(0);
+    opacity: 0;
+  }
+
+  to {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+
+@keyframes bubble-slide-in-right {
+  from {
+    transform: scaleX(0);
+    opacity: 0;
+  }
+
+  to {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+
+/* 纯文本正文。原版是裸节点，包一层 p 只是为了 reset margin。 */
+.message-bubble-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* 图片消息：去掉气泡边框，直接贴图 */
+.message-bubble-image {
+  border-image-source: none;
+  border-image-slice: 0;
+  border-image-width: 0;
+  padding: 0;
+  width: 100%;
+}
+
+.message-bubble-image img {
+  width: 100%;
+  object-fit: contain;
+  border-radius: 0.3125rem;
+  display: block;
+}
+
+/*
+ * 贴纸消息。原版给的是 .message-bubble-sticker，
+ * 这里额外给 img 一个类名是为了让 :has() 选择器能命中（原版用的是节点类型判断）。
+ */
+.message-bubble-sticker {
+  width: 100%;
+  height: auto;
+  border-width: 0.1875rem;
+  padding: 0.625rem;
+}
+
+.message-bubble-sticker > img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/*
+ * 文件消息。
+ *
+ * 用横向的「图标 + 两行字」而不是把文件名直接写在气泡里：文件名可以很长，
+ * 而这一行要同时说清「叫什么」和「多大 / 好没好」。两行之间用字号和颜色分开，
+ * 一眼就能扫到名字。
+ *
+ * 占位态和就绪态**只有颜色差别**，不做位移或缩放的动画 —— 字节是异步到的，
+ * 一个会重排的过渡会让整列消息跟着抖。
+ */
+.message-file {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 16rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.message-file:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* 图标先画一个方框：仓库里还没有配套的文件素材，用形状顶住，不要空着 */
+.message-file-icon {
+  flex: 0 0 auto;
+  width: 1.5rem;
+  height: 1.75rem;
+  border: 0.125rem solid currentColor;
+  border-radius: 0.125rem;
+  opacity: 0.75;
+}
+
+.message-file-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.message-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-file-sub {
+  font-size: 0.75em;
+  opacity: 0.7;
+}
+
+/* ------------------------------------------------------- 引用条 / 撤回占位 */
+
+/* 原版没有引用条，这是本客户端自己加的（协议里有 replyTo 字段） */
+.message-quote {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  margin: 0 0 0.375rem;
+  padding: 0.25rem 0.5rem 0.25rem 0.625rem;
+  border-left: 0.125rem solid #ffef00;
+  background: rgb(0 0 0 / 0.18);
+  border-radius: 0.125rem;
+  font-size: 0.82em;
+  line-height: 1.35;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.message-quote-author {
+  color: #ffef00;
+  font-weight: 700;
+}
+
+.message-quote-text {
+  color: rgb(255 255 255 / 0.66);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-bubble-self .message-quote {
+  background: rgb(0 0 0 / 0.1);
+}
+
+.message-bubble-self .message-quote-author {
+  color: #6b5f00;
+}
+
+.message-bubble-self .message-quote-text {
+  color: rgb(0 0 0 / 0.6);
+}
+
+/* 撤回后的占位。原版对应 .state（居中灰字） */
+.message-recalled {
+  font-size: 0.85em;
+  color: #7f807f;
+  padding: 0.25rem 0;
+}
+
+/* ------------------------------------------------------------ 悬浮操作条 */
+
+/*
+ * 原版 .actions：挂在气泡右侧（右边缘贴住气泡左边缘），
+ * .actions-left 把 right 还原成 auto，于是它落到气泡右边 —— 正方向取决于气泡在左还是右。
+ * 本客户端在同一个条里额外放了时间戳和发送状态。
+ */
+.actions {
+  position: absolute;
+  right: 100%;
+  bottom: 0;
+  white-space: nowrap;
+  visibility: hidden;
+  padding: 1.875rem 0.625rem 0 0.625rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.actions-left {
+  right: initial;
+}
+
+.actions-right {
+  right: 100%;
+}
+
+.message-bubble-wrapper:hover > .actions,
+.actions:hover,
+/*
+ * 键盘也要能把它叫出来。
+ *
+ * 这一组按钮是**纯 `:hover`** 之前，Tab 到它们的时候 `visibility` 还是
+ * `hidden` —— 隐藏元素收不到焦点，于是焦点直接跳过去，复制/回应/引用/
+ * 撤回/重发这些操作**只存在鼠标里**。`:focus-within` 让「里面任何一个
+ * 按钮拿到焦点」等价于「鼠标悬停在这条消息上」。
+ */
+.message-bubble-wrapper:focus-within > .actions,
+.actions:focus-within {
+  visibility: visible;
+  animation: actions-show 0.1s linear forwards;
+}
+
+@keyframes actions-show {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.actions > span.message-time {
+  font-size: 0.85rem;
+  color: rgb(255 255 255 / 0.42);
+  cursor: default;
+}
+
+.actions > button,
+.actions > span.action {
+  margin: 0 0.3rem;
+  font-size: 0.95rem;
+  color: rgb(255 255 255 / 0.82);
+  cursor: pointer;
+}
+
+.actions > button:hover,
+.actions > span.action:hover {
+  text-decoration: underline;
+  color: oklch(80.9% 0.105 251.813);
+}
+
+.actions > .message-state {
+  font-style: normal;
+  font-size: 0.85rem;
+  color: rgb(255 255 255 / 0.36);
+}
+
+.actions > .message-state-failed {
+  color: #ff6b6b;
+}
+
+/* --------------------------------------------------------------------------
+   8. 表情回应 —— 原版 main.css L1251-1302
+   -------------------------------------------------------------------------- */
+
+.message-reaction-wrapper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.25rem;
+}
+
+.message-reaction {
+  white-space: nowrap;
+  display: inline-flex;
+  flex-direction: row;
+  gap: 0.25rem;
+  align-items: center;
+  background-color: #00000015;
+  padding: 0.3125rem 0.5rem 0.3125rem 0.375rem;
+  --reaction-height: 2.5rem;
+  min-height: var(--reaction-height);
+  border-radius: calc(var(--reaction-height) / 2);
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.message-reaction:hover {
+  border-color: rgb(255 255 255 / 0.3);
+}
+
+.message-reaction.has-votes {
+  border-color: #ffef00;
+  background-color: rgb(255 239 0 / 0.12);
+}
+
+.message-reaction-popup {
+  animation: message-reaction-popup 0.1s cubic-bezier(0, 0.2, 0, 0.99) forwards;
+  transform-origin: left center;
+}
+
+@keyframes message-reaction-popup {
+  from {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.message-reaction > img {
+  width: 1.75rem;
+  height: auto;
+}
+
+.message-reaction > span {
+  font-size: 0.85em;
+  color: #a7a7a7;
+}
+
+/* 回应选择器（原版是 ._reaction_menu_emojis 的菜单，这里做成贴着气泡的小面板） */
+.message-emoji-picker {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 0.25rem;
+  padding: 0.5rem;
+  margin-top: 0.375rem;
+  border-radius: 0.5rem;
+  background-color: #ffffffd5;
+  backdrop-filter: blur(8px);
+  border: #00000060 solid 0.0625rem;
+  box-shadow: 0 0.375rem 1.125rem rgb(0 0 0 / 0.28);
+  z-index: 40;
+  animation: message-reaction-popup 0.1s cubic-bezier(0, 0.2, 0, 0.99) forwards;
+}
+
+.message-emoji-picker > button {
+  padding: 0.25rem;
+  border-radius: 0.25rem;
+}
+
+.message-emoji-picker > button:hover {
+  background-color: #00000020;
+}
+
+.message-emoji-picker > button > img {
+  width: 1.75rem;
+  height: 1.75rem;
+  object-fit: contain;
+  display: block;
+}
+
+/* --------------------------------------------------------------------------
+   状态类消息：.state / .state-with-hl（原版 main.css L709-790）
+   -------------------------------------------------------------------------- */
+
+.horizontal-break,
+.state,
+.state-with-hl {
+  position: relative;
+}
+
+.state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.state > span {
+  color: #7f807f;
+  font-size: 1.1em;
+}
+
+.state-with-hl {
+  display: flex;
+  margin: 0 3%;
+  align-items: center;
+  gap: 0.9375rem;
+}
+
+.state-with-hl > span:first-child,
+.state-with-hl > span:last-child {
+  flex: 1;
+  height: 0.1875rem;
+  background-color: #a9a8a6;
+  transform: scaleX(0);
+  animation: line-expand 0.15s ease-in forwards;
+}
+
+.state-with-hl > span:nth-child(2) {
+  color: #929190;
+  font-size: 1.1em;
+}
+
+@keyframes line-expand {
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   9. 输入区（原版 main.css L309-412）
+   -------------------------------------------------------------------------- */
+
+#input-area {
+  --gap: 0.9375rem;
+  --area-padding: 1.125rem;
+  --button-width: calc(var(--input-area-height) - var(--area-padding) * 2);
+  --textarea-height: calc(var(--input-area-height) - var(--area-padding) * 2);
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  flex: 0 0 var(--input-area-height);
+  background-color: #3c3c3c;
+  border-radius: 0 0 0.9375rem 0.9375rem;
+  padding: var(--area-padding);
+  gap: var(--gap);
+  z-index: 20;
+  align-items: flex-end;
+}
+
+#input-area-input {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+#input-area-input-input {
+  position: absolute;
+  bottom: 0;
+  padding: 0.75rem 3.75rem 0.75rem 1.25rem;
+  width: 100% !important;
+  min-height: var(--textarea-height);
+  max-height: 12rem;
+  border-radius: calc(var(--textarea-height) / 2);
+  background-color: #eeecec;
+  field-sizing: content;
+  resize: none;
+  font-size: 1.2em;
+  color: #1b1b1b;
+  overflow-y: auto;
+  line-height: 1.4;
+}
+
+#input-area-input-input::placeholder {
+  color: #9a9a9a;
+}
+
+#input-area-submit {
+  position: absolute;
+  right: 0.75rem;
+  bottom: calc((var(--textarea-height) - var(--button-width)) / 2);
+  width: var(--button-width);
+  height: var(--button-width);
+  border-radius: 100%;
+  background: transparent var(--icon-sns-message-02) no-repeat center 45% / 62%;
+  transition: background-color 0.12s linear;
+}
+
+#input-area-submit:hover {
+  background-color: rgb(0 0 0 / 0.12);
+}
+
+#input-area-submit:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.input-area-button {
+  position: relative;
+  flex: 0 0 auto;
+  width: var(--button-width);
+  height: var(--button-width);
+  align-self: flex-end;
+}
+
+.input-area-button::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-color: transparent;
+  border-radius: 100%;
+  transition: background-color 0.1s linear;
+}
+
+.input-area-button:hover::after {
+  background-color: #00000032;
+}
+
+#input-area-stickers {
+  border-radius: 100%;
+  background: #eeecec var(--icon-sns-chat-emoticon) no-repeat center center / 60%;
+}
+
+#input-area-stickers.input-area-stickers-selected {
+  background: #404040 var(--icon-sns-chat-emoticon-selected) no-repeat center center / 60%;
+}
+
+#input-area-more {
+  border-radius: 100%;
+  background-color: #eeecec;
+}
+
+#input-area-more.input-area-more-selected {
+  background-color: #404040;
+}
+
+#input-area-more::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: transparent var(--input-area-more) no-repeat center center / 60%;
+}
+
+#input-area-more.input-area-more-selected::before {
+  background: transparent var(--input-area-more-selected) no-repeat center center / 60%;
+  transform: rotate(45deg);
+}
+
+/* --------------------------------------------------------------------------
+   10. 贴纸 / 表情面板
+   —— 悬在输入区上方的一块深色面板。游戏原版这块是浅色的 #eeecec 并贴着会话区
+   底部 40%，但那样会把贴纸挤成两行并裁掉最后一行；实测后按可用性选了现在这版。
+   -------------------------------------------------------------------------- */
+
+#more-menu-wrapper,
+#stickers-menu-wrapper {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  height: 22rem;
+  margin: 0 0.5rem 0.5rem;
+  border-radius: 0.9375rem;
+  background-color: #1c1c1c;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: dialog-popup 0.12s ease-out forwards;
+}
+
+.stickers-tabs {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.25rem;
+  padding: 0.75rem 1rem 0;
+  border-bottom: 1px solid rgb(255 255 255 / 0.1);
+}
+
+.stickers-tabs > button {
+  padding: 0.375rem 0.875rem;
+  border-radius: 1rem 1rem 0 0;
+  color: rgb(255 255 255 / 0.6);
+  font-size: 0.9rem;
+}
+
+.stickers-tabs > button.is-active {
+  background: #ffef00;
+  color: #1a1a1a;
+}
+
+.stickers-menu {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 0.5rem;
+  padding: 1rem;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.stickers-menu > button {
+  width: 5.5rem;
+  height: 5.5rem;
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.1s linear;
+}
+
+.stickers-menu > button:hover {
+  background-color: rgb(255 255 255 / 0.12);
+}
+
+.stickers-menu > button > img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.emoji-menu {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 0.375rem;
+  padding: 1rem;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.emoji-menu > button {
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0.25rem;
+  border-radius: 0.375rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.1s linear;
+}
+
+.emoji-menu > button:hover {
+  background-color: rgb(255 255 255 / 0.14);
+}
+
+.emoji-menu > button > img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.more-menu {
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  overflow-y: auto;
+}
+
+.more-menu > button {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  background: rgb(255 255 255 / 0.06);
+  color: #fff;
+  font-size: 1rem;
+  text-align: left;
+}
+
+.more-menu > button:hover {
+  background: rgb(255 255 255 / 0.14);
+}
+
+/* --------------------------------------------------------------------------
+   11. 设置面板 / 提示条
+   -------------------------------------------------------------------------- */
+
+#settings-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgb(0 0 0 / 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fade-in 0.12s linear forwards;
+}
+
+#settings {
+  width: min(38rem, 82vw);
+  max-height: 80vh;
+  overflow-y: auto;
+  background: #eeecec;
+  border-radius: 0.75rem;
+  padding: 1.75rem 2rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.125rem;
+  animation: dialog-popup 0.15s ease-out forwards;
+}
+
+:where(#settings) * {
+  color: black;
+}
+
+#settings h2 {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+#settings .hint {
+  font-size: 0.85rem;
+  color: #6a6a6a;
+  line-height: 1.6;
+}
+
+#settings label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+#settings input[type='text'],
+#settings select {
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+  border: 1px solid #bdbdbd;
+  background: #fff;
+  font-size: 0.95rem;
+  color: #1a1a1a;
+}
+
+#settings .row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+
+/*
+ * 「粘贴一条连接串」那一行：输入框占满，按钮不换行。
+ *
+ * 单独写一条而不是复用 `.row`：`.row` 的按钮会继承 `.actions` 那套消息气泡
+ * 悬浮条的历史包袱（见下面那段注释），这里明确只要「一行两列」。
+ * 输入框用等宽字体：它里面是一整条带百分号转义的 URL，等宽下才看得清哪里断了。
+ */
+#settings .share-import {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+#settings .share-import input[type='text'] {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+}
+
+#settings .share-import button {
+  flex: none;
+  white-space: nowrap;
+}
+
+#settings .share-import button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/*
+ * 拖放二维码那一块。
+ *
+ * 这里的边框**只在拖进来的时候才出现**：平时它看起来就该和上面那条粘贴串
+ * 一样是一行控件，而不是一个空着的框 —— 一个常驻的虚线框会让人以为「这里
+ * 必须先放点什么」，而它其实只是两种入口里的第二种。
+ */
+#settings .share-import.share-drop {
+  border: 1px dashed transparent;
+  border-radius: 6px;
+  padding: 2px 4px;
+  transition: border-color 0.12s ease, background-color 0.12s ease;
+}
+
+#settings .share-import.share-drop.over {
+  border-color: var(--accent, #6ea8fe);
+  background: color-mix(in srgb, var(--accent, #6ea8fe) 12%, transparent);
+}
+
+#settings .share-import .hint {
+  flex: 1;
+  min-width: 0;
+}
+
+/*
+ * ⚠ 这里必须把 `.actions` 那一套**悬浮条**的定位属性全部还原。
+ *
+ * `.actions` 是消息气泡的悬浮操作条（baker.css 上面那条）：
+ * `position:absolute; right:100%; bottom:0; visibility:hidden`。
+ * 设置面板的按钮行复用了同一个类名，但早期的 `#settings .actions` 只写了
+ * flex / gap / margin —— 于是这几个属性原样继承下来，按钮被推到屏幕左外侧、
+ * 而且 **`visibility:hidden` 让它们彻底看不见也点不到**：
+ * 设置面板的「保存并重连」在界面上根本没法按（连带「关闭」「恢复默认」）。
+ * 当时之所以没暴露出问题，是因为连接地址可以靠 `?server=` 网址参数绕过去。
+ */
+#settings .actions {
+  position: static;
+  right: auto;
+  bottom: auto;
+  visibility: visible;
+  white-space: normal;
+  padding: 0;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+  margin-top: 0.5rem;
+}
+
+#settings .actions > button {
+  padding: 0.5rem 1.25rem;
+  border-radius: 1.25rem;
+  font-size: 0.95rem;
+  background: #d5d3d1;
+  color: #1a1a1a;
+}
+
+#settings .actions > button.primary {
+  background: #1a1a1a;
+  color: #fff;
+}
+
+#settings .actions > button:hover {
+  filter: brightness(0.94);
+}
+
+#error-banner {
+  position: fixed;
+  left: 50%;
+  bottom: 1.5rem;
+  transform: translateX(-50%);
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.625rem 1rem;
+  border-radius: 0.5rem;
+  background: #4b1f1f;
+  border: 1px solid #a33;
+  color: #ffd9d9;
+  font-size: 0.9rem;
+  max-width: 70vw;
+}
+
+#error-banner > button {
+  color: #fff;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+/* 「这个会话里有消息是明文发的」提示条（报告 M3）。
+   钉在会话头下面、消息区上面，不遮内容也不抢输入框的焦点。 */
+#plaintext-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0.75rem;
+  background: #4a3a12;
+  border-bottom: 1px solid #b8912f;
+  color: #ffe9a8;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+#plaintext-notice b {
+  color: #ffd24a;
+}
+
+#plaintext-notice > button {
+  flex: none;
+  margin-left: auto;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid #b8912f;
+  border-radius: 0.25rem;
+  color: #ffe9a8;
+  font-size: 0.8rem;
+}
+
+/* 连接断开时盖在消息区上的提示 */
+#connection-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 0.45);
+  color: rgb(255 255 255 / 0.8);
+  font-size: 1em;
+  gap: 0.75rem;
+}
+
+/* --------------------------------------------------------------------------
+   12. 动画（原版同名 keyframes）
+   -------------------------------------------------------------------------- */
+
+/* bubble-slide-in-left / -right / actions-show 定义在第 7 节（靠原版数值，这里不再重复定义，
+   否则后定义的会盖掉前面那个，把原版的 scaleX 横向展开换成缩放） */
+
+@keyframes message-reaction-popup {
+  0% {
+    opacity: 0;
+    transform: scaleX(0.5);
+  }
+
+  60% {
+    transform: scaleX(1);
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes dialog-popup {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* 打字指示的三个点 */
+.typing-dots {
+  display: inline-flex;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.typing-dots > i {
+  width: 0.3rem;
+  height: 0.3rem;
+  border-radius: 50%;
+  background: currentColor;
+  animation: typing-bounce 1.2s infinite ease-in-out;
+}
+
+.typing-dots > i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.typing-dots > i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes typing-bounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.45;
+  }
+
+  30% {
+    transform: translateY(-0.2rem);
+    opacity: 1;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   13. 本客户端补的几块（游戏原版没有，或原版在别的样式表里）
+   -------------------------------------------------------------------------- */
+
+/* 「正在引用 xxx」的悬浮条。原版用 #insert-mode-wrapper 表达「插入/修改模式」，这里借用它的位置。 */
+.reply-preview {
+  position: absolute;
+  left: var(--area-padding);
+  right: var(--area-padding);
+  bottom: calc(100% - 0.625rem);
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.375rem 0.75rem;
+  background: #62abba;
+  border-radius: 0.25rem 0.25rem 0 0;
+  font-size: 0.85em;
+  color: #ffffff;
+  z-index: 25;
+  animation: dialog-popup 0.12s ease-out forwards;
+}
+
+.reply-preview-label {
+  flex: 0 0 auto;
+  font-weight: 700;
+}
+
+.reply-preview-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.85;
+}
+
+.reply-preview > button {
+  flex: 0 0 auto;
+  font-size: 1.1em;
+  line-height: 1;
+  color: #ffffff;
+}
+
+/* --------------------------------------------------------------------------
+   14. 对话框（照抄游戏 menu.css 的 .dialog / .dialog-title / .dialog-content）
+   -------------------------------------------------------------------------- */
+
+.dialog {
+  position: fixed;
+  left: 45vw;
+  top: 45vh;
+  translate: max(-50%, calc(0.625rem - 45vw)) max(-50%, calc(0.625rem - 45vh));
+  z-index: 326;
+  width: max-content;
+  min-width: min(37.5rem, calc(100vw - 1.25rem));
+  max-width: calc(100vw - 1.25rem);
+  max-height: calc(100vh - 1.25rem);
+  padding: 0.25rem;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  background-color: #ffffffd5;
+  backdrop-filter: blur(8px);
+  border-radius: 0.5rem;
+  box-shadow: 0 0.375rem 1.125rem rgb(0 0 0 / 0.28);
+  border: #00000060 solid 0.0625rem;
+  animation: dialog-popup 0.15s ease-out forwards;
+}
+
+.dialog *,
+.dialog *::before,
+.dialog *::after {
+  color: black;
+}
+
+.dialog-title {
+  height: 2rem;
+  padding-left: 0.625rem;
+  display: flex;
+  align-items: center;
+  font-weight: 700;
+  cursor: move;
+}
+
+.dialog-content {
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  max-height: calc(100vh - 6rem);
+  overflow-y: auto;
+}
+
+.dialog-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.dialog-field input[type='text'] {
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+  border: 1px solid #bdbdbd;
+  background: #fff;
+  color: #1a1a1a;
+  font-size: 0.95rem;
+  font-weight: 400;
+}
+
+.dialog-choices {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.dialog-choices > button {
+  padding: 0.375rem 1rem;
+  border-radius: 1rem;
+  background: #00000014;
+  font-size: 0.9rem;
+}
+
+.dialog-choices > button.is-active {
+  background: #ffef00;
+  font-weight: 700;
+}
+
+.dialog-members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  max-height: 14rem;
+  overflow-y: auto;
+  padding: 0.25rem;
+  background: rgb(0 0 0 / 0.04);
+  border-radius: 0.375rem;
+}
+
+.dialog-member {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem 0.25rem 0.25rem;
+  border-radius: 1.25rem;
+  background: #ffffff;
+  border: 1px solid transparent;
+  font-size: 0.85rem;
+}
+
+.dialog-member.is-active {
+  border-color: #ffef00;
+  background: #fffbe0;
+}
+
+.dialog-member > img {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  object-fit: cover;
+  clip-path: inset(6% 6% 6% 6% round 100% 100% 100% 100%);
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
+
+.dialog-actions > button {
+  min-height: 2.25rem;
+  min-width: 5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.25rem;
+  background: #00000014;
+  font-size: 0.95rem;
+}
+
+.dialog-actions > button.is-primary {
+  background: #1a1a1a;
+  color: #fff;
+}
+
+.dialog-actions > button.is-primary:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}

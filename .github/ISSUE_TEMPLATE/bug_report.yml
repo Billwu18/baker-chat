@@ -1,0 +1,66 @@
+name: Bug 报告
+description: 有东西坏了、或者行为和预期不一样
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢报告。**如果是安全问题，请不要发这里** —— 按 [SECURITY.md](../SECURITY.md) 私下报告。
+
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么
+      description: 一句话说清楚现象。贴上报错原文，不要只贴截图。
+      placeholder: 两台机器互相能发现，但发消息一直显示「发送中…」
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 你以为会发生什么
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 越小越好。能写「第 N 步之后就坏」就别写「用着用着就坏了」。
+      placeholder: |
+        1. `npm run desktop:dev` 起两个实例（BAKER_DATA_DIR 不同）
+        2. A 发一条文本
+        3. B 收到，但气泡停在 pending
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 影响哪一层
+      multiple: true
+      options:
+        - 界面
+        - 发现 / 连接（P2P）
+        - 消息收发 / 同步
+        - 加密 / 密钥
+        - 通知
+        - 构建 / 打包
+        - 不确定
+
+  - type: input
+    id: env
+    attributes:
+      label: 环境
+      description: 系统版本、Node / Rust 版本、是网页版还是桌面壳
+      placeholder: Windows 11 23H2 / Node 22.11 / Rust 1.90 / 桌面壳
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 相关日志
+      description: |
+        桌面壳的日志在控制台；事件日志是 `%APPDATA%\<identifier>\events.log`。
+        **贴之前请把别人的 id、名字、消息内容删掉。**
+      render: text

@@ -1,0 +1,52 @@
+[package]
+name = "baker"
+version = "0.1.0"
+description = "纯局域网、端到端加密的桌面聊天客户端（界面参考《明日方舟：终末地》，非官方项目）"
+authors = ["baker-chat contributors"]
+license = "MIT"
+repository = "https://github.com/Billwu18/baker-chat"
+edition = "2024"
+rust-version = "1.90"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# 名字不能改：src/main.rs 里调用的是 app_lib::run()
+name = "app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.7.2", features = [] }
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+log = "0.4"
+tauri = { version = "2.12.3", features = [] }
+tauri-plugin-log = "2"
+
+# 唯一一处额外的依赖。不是为了功能，是为了「同一台机器开两个实例」：
+# 两个进程要绑同一个 UDP 发现端口才都能收到组播，而 std 的 UdpSocket
+# 不暴露 SO_REUSEADDR。Windows 上开了它两个 socket 就能共存。
+# 没有它，连本机的双节点自测都做不了。
+socket2 = "0.5"
+
+# 打开 WebView2 的「通知」权限，让 `new Notification(...)` 真的变成
+# Windows 右下角那条横幅（见 `src/lib.rs` 的 `allow_notifications`）。
+#
+# 版本必须和 tauri/wry 已经在用的那份**完全一致**（0.39.1，本来就在
+# Cargo.lock 里）—— 多带一个版本会把整套 COM 绑定再编译一遍，而它们之间
+# 靠 `#[implement]` 对齐 ABI，混版本是个很难查的雷。所以这里用 `=` 钉死。
+[target.'cfg(windows)'.dependencies]
+webview2-com = "=0.39.1"
+# 右下角那条通知横幅。用 WinRT 的 `Windows.UI.Notifications`，版本同样钉在
+# Cargo.lock 里已有的 0.62.2（tauri 自己就依赖它，feature 只是决定编译哪几个模块）。
+windows = { version = "0.62", features = ["Data_Xml_Dom", "UI_Notifications", "Foundation"] }
+
+# 前端产物里光是 HarmonyOS Sans SC 三个字重就有 24MB，二进制本身没必要再胖
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
