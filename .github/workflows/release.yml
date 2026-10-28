@@ -1,0 +1,63 @@
+name: Release
+
+# 打一个 v* 标签，或者手动点 Run workflow，就会构建 Windows 绿色版并挂到 Release 上。
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 要发布到哪个标签（例如 v0.1.0，必须已存在）
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 全量自检
+        run: pwsh -NoProfile -File tools/check-all.ps1
+
+      - name: 构建（release，不打包安装器）
+        # beforeBuildCommand 是 `npm run build`，tauri 会自己跑。
+        run: npx tauri build --no-bundle
+
+      - name: 打绿色包
+        run: pwsh -NoProfile -File tools/make-client-portable.ps1 -SkipBuild -Force
+
+      - name: 挂到 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          name: BAKER Chat ${{ inputs.tag || github.ref_name }}
+          draft: false
+          generate_release_notes: true
+          files: |
+            dist-portable/*.zip
+            dist-portable/**/BAKER.exe.sha256.txt
+          body: |
+            下载 `baker-client-*-portable.zip`，解压后双击 `BAKER.exe` 即可运行，无需安装。
+
+            - 只支持 Windows（WebView2 需已安装，Win11 自带）
+            - 仓库不含游戏素材，界面里的头像 / 贴纸 / 装饰为空是正常的
+
+            Download the portable zip, unzip, and run `BAKER.exe`. No installer required.
+            Windows only. No game assets are bundled — empty avatars/stickers are expected.
